@@ -1,0 +1,9 @@
+node_modules
+
+/.cache
+/build
+.env
+
+# Add these lines to your existing .gitignore
+*.log
+/prisma/migrations

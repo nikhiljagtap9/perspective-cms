@@ -1,0 +1,226 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Country {
+  id                    String   @id @default(cuid())
+  name                  String
+  code                  String   
+  embassyInUsUrl        String?
+  usEmbassyUrl         String?
+  overview             String?   @db.Text
+  demographics         String?   @db.Text
+  politics             String?   @db.Text
+  religion             String?   @db.Text
+  economy              String?   @db.Text
+  culture              String?   @db.Text
+  media                String?   @db.Text
+  humanRights          String?   @db.Text
+  history              String?   @db.Text
+  humanDevelopment     String?   @db.Text
+  diplomacy            String?   @db.Text
+  politicalLeadership  String?   @db.Text
+  militaryLeadership   String?   @db.Text
+  published            Boolean   @default(false)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  feeds                Feed[]
+  reports              Report[]
+  emergencyNumbers     EmergencyNumber[]
+  newsSources          NewsSource[]
+  influencers          Influencer[]
+  keywords             Keyword[]
+  governmentMessaging  GovernmentMessaging[]
+  leadershipMessaging  LeadershipMessaging[]
+  diplomaticPresence   DiplomaticPresence[]
+  embassyPresence      EmbassyPresence[]
+}
+
+enum FeedType {
+  MAIN_FEED
+  EMBASSY_MENTION
+  AMBASSADOR_MENTION
+  INFLUENCER_TALK
+  DAILY_SUMMARY
+  US_MENTIONS
+  GOVERNMENT_MESSAGING
+  LEADERSHIP_MESSAGING
+  BREAKING_NEWS
+}
+
+model Feed {
+  id        String   @id @default(cuid())
+  name      String
+  url       String
+  type      FeedType
+  order     Int      @default(0)
+  extraInfo String?
+  countryId String
+  country   Country  @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([countryId])
+  @@index([order])
+}
+
+enum UserRole {
+  SUPERADMIN
+  ADMIN
+  USER
+}
+
+model User {
+  id        String   @id @default(cuid())
+  username  String   @unique
+  password  String
+  role      UserRole @default(USER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  sessions UserSession[]
+}
+
+model UserSession {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  // Relationships
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Report {
+  id        String   @id @default(cuid())
+  name      String
+  fileUrl   String
+  countryId String
+  country   Country  @relation(fields: [countryId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model EmergencyNumber {
+  id        String   @id @default(cuid())
+  name      String
+  number    String
+  countryId String
+  country   Country  @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([countryId])
+}
+
+model NewsSource {
+  id        String   @id @default(cuid())
+  name      String
+  url       String
+  notes     String?  @db.Text
+  countryId String
+  country   Country  @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([countryId])
+}
+
+model Influencer {
+  id              String   @id @default(cuid())
+  name            String
+  handle          String
+  role            String
+  politicalLeaning Float
+  url             String
+  countryId       String
+  country         Country  @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([countryId])
+}
+
+model ContentGeneration {
+  id          String   @id @default(cuid())
+  status      String   // PENDING, COMPLETED, SAVED, ERROR
+  section     String
+  countryName String
+  content     String?  @db.Text
+  error       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Keyword {
+  id        String   @id @default(cuid())
+  keyword   String
+  countryId String
+  country   Country  @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([countryId])
+}
+
+model GovernmentMessaging {
+  id        String   @id @default(cuid())
+  name      String
+  handle    String
+  notes     String?  @db.Text
+  countryId String
+  country   Country  @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([countryId])
+}
+
+model LeadershipMessaging {
+  id              String   @id @default(cuid())
+  name            String
+  title           String
+  handle          String
+  politicalLeaning String?  @db.Text
+  countryId       String
+  country         Country  @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([countryId])
+}
+
+model DiplomaticPresence {
+  id              String   @id @default(cuid())
+  handle          String
+  countryId       String
+  country         Country  @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([countryId])
+}
+
+model EmbassyPresence {
+  id              String   @id @default(cuid())
+  handle          String
+  countryId       String
+  country         Country  @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([countryId])
+}

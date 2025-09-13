@@ -52,6 +52,18 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   </Link>
                 </NavigationMenuItem>
                 <NavigationMenuItem className="w-full">
+                  <Link 
+                    to="/scrapper" 
+                    className={cn(
+                      navigationMenuTriggerStyle(),
+                      "w-full justify-start",
+                      isActive('/scrapper') && "bg-accent text-accent-foreground"
+                    )}
+                  >
+                    Scrapper 
+                  </Link>
+                </NavigationMenuItem>
+                <NavigationMenuItem className="w-full">
                   <Form action="/auth/logout" method="post">
                     <button 
                       type="submit"

@@ -24,6 +24,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const isLoginPage = url.pathname === "/auth/login";
   const isProtectedRoute = url.pathname.startsWith("/countries") || 
                           url.pathname.startsWith("/users") || 
+                          url.pathname.startsWith("/scrapper") ||
                           url.pathname === "/";
   
   // If it's not a protected route, don't check authentication

@@ -7,3 +7,4 @@ node_modules
 # Add these lines to your existing .gitignore
 *.log
 /prisma/migrations
+/venv

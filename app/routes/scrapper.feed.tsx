@@ -62,16 +62,14 @@ export default function FeedPage() {
 
             {/* Articles */}
             <div className="space-y-4">
-              {parsedContent.channel.items.map(
-                (item: any, idx: number) => (
+              {parsedContent.channel.items.length > 0 ? (
+                parsedContent.channel.items.map((item: any, idx: number) => (
                   <div
                     key={idx}
                     className="p-3 border rounded hover:bg-gray-800"
                   >
                     <h4 className="font-semibold">{item.title}</h4>
-                    <p className="text-sm text-gray-600">
-                      {item.pubDate}
-                    </p>
+                    <p className="text-sm text-gray-600">{item.pubDate}</p>
                     <a
                       href={item.link}
                       target="_blank"
@@ -81,9 +79,22 @@ export default function FeedPage() {
                       {item.link}
                     </a>
                   </div>
-                )
+                ))
+              ) : (
+                <div className="p-3 border rounded bg-gray-100">
+                  <p className="text-sm text-gray-600 italic">
+                    ⚠️ No articles found for this source.
+                  </p>
+                  {parsedContent.channel.meta && (
+                    <p className="text-xs text-gray-500">
+                      Status: {parsedContent.channel.meta.status} | 
+                      Articles: {parsedContent.channel.meta.article_count}
+                    </p>
+                  )}
+                </div>
               )}
             </div>
+
           </div>
         ) : (
           <p>No content yet (waiting for scraper).</p>

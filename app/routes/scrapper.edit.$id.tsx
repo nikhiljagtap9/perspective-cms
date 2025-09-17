@@ -65,6 +65,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       ["./scripts/scraper.py", url, feedTypeLabel]
     );
 
+    
     let scrapedContent: string | null = null;
      try {
       // Validate JSON

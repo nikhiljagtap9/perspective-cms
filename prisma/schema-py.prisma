@@ -199,17 +199,21 @@ model EmbassyPresence {
 }
 
 model ScrapperData {
-  id         Int       @id @default(autoincrement())
-  country_id String
-  url        String
-  feed_type  FeedType
-  content    String?
-  created_at DateTime? @default(now()) @db.Timestamp(6)
-  updated_at DateTime? @default(now()) @db.Timestamp(6)
-  Country    Country   @relation(fields: [country_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_country")
+  id            Int       @id @default(autoincrement())
+  country_id    String
+  url           String
+  feed_type     FeedType
+  content       String?
+  etag          String?    // <-- NEW
+  last_modified String?    // <-- NEW
+  created_at    DateTime? @default(now()) @db.Timestamp(6)
+  updated_at    DateTime? @default(now()) @db.Timestamp(6)
 
-  @@index([country_id], map: "scrapperdata_countryid_idx")
+  Country Country @relation(fields: [country_id], references: [id], onDelete: Cascade)
+
+  @@unique([country_id, url], map: "scrapperdata_countryid_url_unique")
 }
+
 
 enum FeedType {
   MAIN_FEED

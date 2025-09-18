@@ -166,7 +166,7 @@ export default function NewFeed() {
           <div className="flex gap-4">
             <Button type="submit">Create Feed</Button>
             <Button variant="outline" asChild>
-              <Link to="/feeds">Cancel</Link>
+              <Link to="/scrapper">Cancel</Link>
             </Button>
           </div>
         </Form>

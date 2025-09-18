@@ -132,6 +132,7 @@ export default function Scrapper() {
               <TableHead>Feed Type</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Created At</TableHead>
+              <TableHead>Updated At</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -168,6 +169,9 @@ export default function Scrapper() {
                 </TableCell>
                 <TableCell>
                   {new Date(feed.created_at).toLocaleDateString()}
+                </TableCell>
+                 <TableCell>
+                  {new Date(feed.updated_at).toLocaleDateString()}
                 </TableCell>
                 <TableCell className="flex gap-2 justify-end">
                   <Button variant="secondary" size="sm" asChild>

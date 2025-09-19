@@ -42,6 +42,8 @@ export default function CountryLayout() {
     { name: 'Leadership Messaging', href: `/countries/${id}/leadership-messaging` },
     { name: 'Ambassador', href: `/countries/${id}/diplomatic-presence` },
     { name: 'Embassy', href: `/countries/${id}/embassy-presence` },
+    // { name: 'US Mentions Sources', href: `/countries/${id}/us-mentions-sources` },
+    { name: 'US Mentions Keywords', href: `/countries/${id}/us-mentions-keywords` },
   ];
 
   const currentTab = tabs.find(tab => 
@@ -99,6 +101,12 @@ export default function CountryLayout() {
           </TabsTrigger>
           <TabsTrigger value="embassy presence" asChild>
             <Link to={`/countries/${country.id}/embassy-presence`}>Embassy</Link>
+          </TabsTrigger>
+          {/* <TabsTrigger value="us mentions sources" asChild>
+            <Link to={`/countries/${country.id}/us-mentions-sources`}>US Mentions Sources</Link>
+          </TabsTrigger> */}
+          <TabsTrigger value="us mentions keywords" asChild>
+            <Link to={`/countries/${country.id}/us-mentions-keywords`}>US Mentions Keywords</Link>
           </TabsTrigger>
         </TabsList>
 

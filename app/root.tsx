@@ -34,6 +34,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const isProtectedRoute =
     url.pathname.startsWith("/countries") ||
     url.pathname.startsWith("/users") ||
+    url.pathname.startsWith("/usmentionresources") ||
     url.pathname.startsWith("/scrapper") ||
     url.pathname === "/";
 

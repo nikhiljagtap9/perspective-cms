@@ -53,6 +53,18 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 </NavigationMenuItem>
                 <NavigationMenuItem className="w-full">
                   <Link 
+                    to="/usmentionresources" 
+                    className={cn(
+                      navigationMenuTriggerStyle(),
+                      "w-full justify-start",
+                      isActive('/usmentionresources') && "bg-accent text-accent-foreground"
+                    )}
+                  >
+                    US Mention Sources 
+                  </Link>
+                </NavigationMenuItem>
+                <NavigationMenuItem className="w-full">
+                  <Link 
                     to="/scrapper" 
                     className={cn(
                       navigationMenuTriggerStyle(),

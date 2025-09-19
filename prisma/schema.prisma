@@ -40,6 +40,7 @@ model Country {
   newsSources         NewsSource[]
   reports             Report[]
   scrapperData        ScrapperData[]
+  usMentionsKeywords   UsMentionsKeyword[]
 }
 
 model Feed {
@@ -190,6 +191,26 @@ model DiplomaticPresence {
 model EmbassyPresence {
   id        String   @id @default(cuid())
   handle    String
+  countryId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  country   Country  @relation(fields: [countryId], references: [id], onDelete: Cascade)
+
+  @@index([countryId])
+}
+
+model UsMentionsSource {
+  id        String   @id @default(cuid())
+  name      String
+  url       String
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model UsMentionsKeyword {
+  id        String   @id @default(cuid())
+  keyword   String
   countryId String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

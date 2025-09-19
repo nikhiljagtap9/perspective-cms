@@ -88,39 +88,99 @@ async def fetch_page(url: str, saved_etag: str = None, saved_lastmod: str = None
 # ----------------------------
 # Scrape Articles
 # ----------------------------
+# def scrape_articles(url: str, html: str, keywords: list[str], country_name: str):
+#     articles = []
+#     soup = BeautifulSoup(html, "html.parser")
+
+#     for a in soup.find_all("a", href=True):
+#         title = a.get_text(strip=True)
+
+#         # Skip if no usable title
+#         if not title or len(title.split()) <= 3:
+#             continue
+
+#         link = a["href"].strip()
+#         if not link:
+#             continue
+#         if not link.startswith("http"):
+#             link = url.rstrip("/") + "/" + link.lstrip("/")
+
+#         # ✅ Match only against title text
+#         #
+#         #
+#         #
+#         title_lower = title.lower()
+#         if not (
+#             any(word.lower() in title_lower for word in keywords)
+#             or country_name.lower() in title_lower
+#         ):
+#             continue
+
+#         # if not any(word.lower() in title.lower() for word in keywords):
+#         #     continue
+
+#         pub_time = datetime.now().strftime("%a, %d %b %Y %H:%M:%S GMT")
+#         articles.append(
+#             {
+#                 "title": title or "Untitled",
+#                 "description": title,   # same as title
+#                 "link": link,
+#                 "guid": {"isPermaLink": True, "value": link},
+#                 "dc:creator": "scraper",
+#                 "pubDate": pub_time,
+#             }
+#         )
+
+#     return articles
+
 def scrape_articles(url: str, html: str, keywords: list[str], country_name: str):
     articles = []
+    seen_links = set()   # track duplicates
     soup = BeautifulSoup(html, "html.parser")
 
     for a in soup.find_all("a", href=True):
         title = a.get_text(strip=True)
+        link = a["href"]
 
-        # Skip if no usable title
         if not title or len(title.split()) <= 3:
-            continue
-
-        link = a["href"].strip()
-        if not link:
             continue
         if not link.startswith("http"):
             link = url.rstrip("/") + "/" + link.lstrip("/")
 
-        # ✅ Match only against title text
-        #
-        #
-        #
-        title_lower = title.lower()
-        if not (
-            any(word.lower() in title_lower for word in keywords)
-            or country_name.lower() in title_lower
-        ):
+        # skip duplicates
+        if link in seen_links:
+            continue
+        seen_links.add(link)    
+
+        # --- Collect context ---
+        context_parts = [title]
+
+        parent = a.find_parent()
+        if parent:
+            # Add surrounding <p> texts
+            for p in parent.find_all("p", limit=3):
+                text = p.get_text(strip=True)
+                if text:
+                    context_parts.append(text)
+
+            # Add image alt text if available
+            img = parent.find("img")
+            if img and img.has_attr("alt") and img["alt"].strip():
+                context_parts.append(img["alt"].strip())
+
+        # Combine context
+        full_context = " ".join(context_parts).lower()
+
+        # --- Match keywords against title OR surrounding context ---
+        if not any(word.lower() in full_context for word in keywords):
             continue
 
         pub_time = datetime.now().strftime("%a, %d %b %Y %H:%M:%S GMT")
+
         articles.append(
             {
-                "title": title or "Untitled",
-                "description": title,   # same as title
+                "title": title,
+                "description": " ".join(context_parts)[:500],  # context used as description
                 "link": link,
                 "guid": {"isPermaLink": True, "value": link},
                 "dc:creator": "scraper",

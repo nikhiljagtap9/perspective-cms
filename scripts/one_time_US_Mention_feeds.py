@@ -55,6 +55,7 @@ async def fetch_page(url: str):
 # ----------------------------
 def scrape_articles(url: str, html: str, keywords: list[str], country_name: str):
     articles = []
+    seen_links = set()   # Track duplicates by link
     soup = BeautifulSoup(html, "html.parser")
 
     # --- Find site logo ---
@@ -92,6 +93,11 @@ def scrape_articles(url: str, html: str, keywords: list[str], country_name: str)
             continue
         if not link.startswith("http"):
             link = url.rstrip("/") + "/" + link.lstrip("/")
+
+        # Skip duplicates
+        if link in seen_links:
+            continue
+        seen_links.add(link)    
 
         # Collect context for keyword matching
         context_parts = [title]

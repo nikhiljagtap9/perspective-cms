@@ -92,61 +92,35 @@ def scrape_articles(url: str, html: str, keywords: list[str], country_name: str)
     articles = []
     soup = BeautifulSoup(html, "html.parser")
 
-    # --- Try to extract site logo ---
-    site_logo = None
-    icon = soup.find("link", rel=lambda v: v and "icon" in v.lower())
-    if icon and icon.get("href"):
-        site_logo = icon["href"]
-
-    if not site_logo:
-        og_img = soup.find("meta", property="og:image")
-        if og_img and og_img.get("content"):
-            site_logo = og_img["content"]
-
-    if not site_logo:
-        logo_img = soup.find("img", {"class": lambda v: v and "logo" in v.lower()})
-        if not logo_img:
-            logo_img = soup.find("img", {"id": lambda v: v and "logo" in v.lower()})
-        if logo_img and logo_img.get("src"):
-            site_logo = logo_img["src"]
-
-    if site_logo and not site_logo.startswith("http"):
-        site_logo = url.rstrip("/") + "/" + site_logo.lstrip("/")
-
-    # --- Collect article candidates ---
     for a in soup.find_all("a", href=True):
         title = a.get_text(strip=True)
-        link = a["href"]
 
+        # Skip if no usable title
         if not title or len(title.split()) <= 3:
+            continue
+
+        link = a["href"].strip()
+        if not link:
             continue
         if not link.startswith("http"):
             link = url.rstrip("/") + "/" + link.lstrip("/")
 
-        # Collect context
-        context_parts = [title]
-        parent = a.find_parent()
-        if parent:
-            for p in parent.find_all("p", limit=3):
-                context_parts.append(p.get_text(strip=True))
-            img = parent.find("img")
-            if img and img.has_attr("alt"):
-                context_parts.append(img["alt"])
-
-        full_context = " ".join(context_parts).lower()
-
-        # Match keywords OR country name
+        # ✅ Match only against title text
+        #
+        #
+        #
+        title_lower = title.lower()
         if not (
-            any(word.lower() in full_context for word in keywords)
-            or country_name.lower() in full_context
+            any(word.lower() in title_lower for word in keywords)
+            or country_name.lower() in title_lower
         ):
             continue
 
         pub_time = datetime.now().strftime("%a, %d %b %Y %H:%M:%S GMT")
         articles.append(
             {
-                "title": title,
-                "description": " ".join(context_parts)[:500],
+                "title": title or "Untitled",
+                "description": title,   # same as title
                 "link": link,
                 "guid": {"isPermaLink": True, "value": link},
                 "dc:creator": "scraper",
@@ -154,7 +128,7 @@ def scrape_articles(url: str, html: str, keywords: list[str], country_name: str)
             }
         )
 
-    return articles, site_logo
+    return articles
 
 
 # ----------------------------
@@ -171,7 +145,7 @@ async def scrape_country(db: Prisma, country, sources_by_country, keywords_by_co
         all_articles = []
         site_logo = None
 
-        # scrape all sources
+        # scrape each URL and merge articles
         tasks = [fetch_page(url) for url in urls]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -214,7 +188,7 @@ async def scrape_country(db: Prisma, country, sources_by_country, keywords_by_co
                 "link": urls[0] if urls else None,
             }
 
-        # save/update one row per (country_id, MAIN_FEED)
+        # save/update one row per country + feed_type
         saved_row = await db.scrapperdata.find_unique(
             where={"country_id_feed_type": {"country_id": country.id, "feed_type": "MAIN_FEED"}}
         )
@@ -239,9 +213,6 @@ async def scrape_country(db: Prisma, country, sources_by_country, keywords_by_co
         return len(all_articles)
 
 
-# ----------------------------
-# Scrape all sources for a country
-# ----------------------------
 # ----------------------------
 # Scrape all sources for a country
 # ----------------------------

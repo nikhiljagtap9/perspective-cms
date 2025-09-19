@@ -74,20 +74,46 @@ async def fetch_page(url: str, saved_etag: str = None, saved_lastmod: str = None
     try:
         r = await client.get(url, headers=headers)
         if r.status_code == 304:
+            logging.info(f"[SKIP] {url} → Not Modified (304)")
             return None, "not_modified", None, None
+        if r.status_code != 200:
+            logging.error(f"[HTTP ERROR] {url} → {r.status_code} {r.reason_phrase}")
         r.raise_for_status()
         return r.text, None, r.headers.get("ETag"), r.headers.get("Last-Modified")
     except Exception as e:
+        logging.error(f"[REQUEST FAILED] {url} → {e}")
         return None, str(e), None, None
 
 
 # ----------------------------
 # Scrape Articles
 # ----------------------------
-def scrape_articles(url: str, html: str, keywords: list[str]):
+def scrape_articles(url: str, html: str, keywords: list[str], country_name: str):
     articles = []
     soup = BeautifulSoup(html, "html.parser")
 
+    # --- Try to extract site logo ---
+    site_logo = None
+    icon = soup.find("link", rel=lambda v: v and "icon" in v.lower())
+    if icon and icon.get("href"):
+        site_logo = icon["href"]
+
+    if not site_logo:
+        og_img = soup.find("meta", property="og:image")
+        if og_img and og_img.get("content"):
+            site_logo = og_img["content"]
+
+    if not site_logo:
+        logo_img = soup.find("img", {"class": lambda v: v and "logo" in v.lower()})
+        if not logo_img:
+            logo_img = soup.find("img", {"id": lambda v: v and "logo" in v.lower()})
+        if logo_img and logo_img.get("src"):
+            site_logo = logo_img["src"]
+
+    if site_logo and not site_logo.startswith("http"):
+        site_logo = url.rstrip("/") + "/" + site_logo.lstrip("/")
+
+    # --- Collect article candidates ---
     for a in soup.find_all("a", href=True):
         title = a.get_text(strip=True)
         link = a["href"]
@@ -96,92 +122,43 @@ def scrape_articles(url: str, html: str, keywords: list[str]):
             continue
         if not link.startswith("http"):
             link = url.rstrip("/") + "/" + link.lstrip("/")
-        if not any(word.lower() in title.lower() for word in keywords):
+
+        # Collect context
+        context_parts = [title]
+        parent = a.find_parent()
+        if parent:
+            for p in parent.find_all("p", limit=3):
+                context_parts.append(p.get_text(strip=True))
+            img = parent.find("img")
+            if img and img.has_attr("alt"):
+                context_parts.append(img["alt"])
+
+        full_context = " ".join(context_parts).lower()
+
+        # Match keywords OR country name
+        if not (
+            any(word.lower() in full_context for word in keywords)
+            or country_name.lower() in full_context
+        ):
             continue
 
         pub_time = datetime.now().strftime("%a, %d %b %Y %H:%M:%S GMT")
         articles.append(
             {
                 "title": title,
-                "description": title,
+                "description": " ".join(context_parts)[:500],
                 "link": link,
                 "guid": {"isPermaLink": True, "value": link},
                 "dc:creator": "scraper",
                 "pubDate": pub_time,
             }
         )
-    return articles
+
+    return articles, site_logo
 
 
 # ----------------------------
 # Scrape Single URL
-# ----------------------------
-async def scrape_single_url(db: Prisma, country_name, country_id, url, keywords):
-    async with url_semaphore:
-        try:
-            saved_row = await db.scrapperdata.find_unique(
-                where={"country_id_url": {"country_id": country_id, "url": url}}
-            )
-
-            html, error_reason, new_etag, new_lastmod = await fetch_page(
-                url,
-                saved_row.etag if saved_row else None,
-                saved_row.last_modified if saved_row else None,
-            )
-
-            if error_reason == "not_modified":
-                return 0
-
-            articles = scrape_articles(url, html, keywords) if html else []
-
-            status = "success" if articles else ("error" if error_reason else "empty")
-
-            rss_json = {
-                "channel": {
-                    "title": "Main Feed",
-                    "description": f"Scraped articles for {country_name} ({url})",
-                    "link": url,
-                    "items": articles,
-                    "meta": {
-                        "status": status,
-                        "reason": error_reason,
-                        "article_count": len(articles),
-                    },
-                }
-            }
-
-            if saved_row:
-                await db.scrapperdata.update(
-                    where={"id": saved_row.id},
-                    data={
-                        "content": json.dumps(rss_json, ensure_ascii=False),
-                        "etag": new_etag,
-                        "last_modified": new_lastmod,
-                        "updated_at": datetime.now(),
-                    },
-                )
-            else:
-                await db.scrapperdata.create(
-                    data={
-                        "url": url,
-                        "feed_type": "MAIN_FEED",
-                        "country_id": country_id,
-                        "etag": new_etag,
-                        "last_modified": new_lastmod,
-                        "content": json.dumps(rss_json, ensure_ascii=False),
-                    }
-                )
-
-            return len(articles)
-
-        except Exception as e:
-            logging.error(f"[{country_name}] {url} failed: {e}")
-            traceback.print_exc()
-            return 0
-
-
-# ----------------------------
-# Scrape Country
 # ----------------------------
 async def scrape_country(db: Prisma, country, sources_by_country, keywords_by_country):
     async with country_semaphore:
@@ -191,10 +168,146 @@ async def scrape_country(db: Prisma, country, sources_by_country, keywords_by_co
         if not urls or not keywords:
             return 0
 
-        tasks = [scrape_single_url(db, country.name, country.id, url, keywords) for url in urls]
+        all_articles = []
+        site_logo = None
+
+        # scrape all sources
+        tasks = [fetch_page(url) for url in urls]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        return sum(r for r in results if isinstance(r, int))
+        for i, result in enumerate(results):
+            url = urls[i]
+            if isinstance(result, Exception):
+                logging.error(f"[{country.name}] {url} failed: {result}")
+                continue
+
+            html, error_reason, _, _ = result
+            if error_reason:
+                logging.error(f"[{country.name}] ERROR from {url}: {error_reason}")
+                continue
+
+            if html:
+                articles, logo = scrape_articles(url, html, keywords, country.name)
+                all_articles.extend(articles)
+                if logo and not site_logo:
+                    site_logo = logo
+
+        # build one combined feed JSON
+        status = "success" if all_articles else "empty"
+        rss_json = {
+            "channel": {
+                "title": "Main Feed",
+                "description": f"Scraped articles for {country.name}",
+                "link": None,
+                "items": all_articles,
+                "meta": {
+                    "status": status,
+                    "article_count": len(all_articles),
+                },
+            }
+        }
+
+        if site_logo:
+            rss_json["channel"]["image"] = {
+                "url": site_logo,
+                "title": f"{country.name} Feed",
+                "link": urls[0] if urls else None,
+            }
+
+        # save/update one row per (country_id, MAIN_FEED)
+        saved_row = await db.scrapperdata.find_unique(
+            where={"country_id_feed_type": {"country_id": country.id, "feed_type": "MAIN_FEED"}}
+        )
+
+        if saved_row:
+            await db.scrapperdata.update(
+                where={"id": saved_row.id},
+                data={
+                    "content": json.dumps(rss_json, ensure_ascii=False),
+                    "updated_at": datetime.now(),
+                },
+            )
+        else:
+            await db.scrapperdata.create(
+                data={
+                    "country_id": country.id,
+                    "feed_type": "MAIN_FEED",
+                    "content": json.dumps(rss_json, ensure_ascii=False),
+                }
+            )
+
+        return len(all_articles)
+
+
+# ----------------------------
+# Scrape all sources for a country
+# ----------------------------
+# ----------------------------
+# Scrape all sources for a country
+# ----------------------------
+async def scrape_country(db: Prisma, country, sources_by_country, keywords_by_country):
+    async with country_semaphore:
+        urls = sources_by_country.get(country.id, [])
+        keywords = keywords_by_country.get(country.id, [])
+
+        if not urls or not keywords:
+            return 0
+
+        all_articles = []
+
+        # scrape each URL and merge articles
+        tasks = [fetch_page(url) for url in urls]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        for i, result in enumerate(results):
+            url = urls[i]
+            if isinstance(result, Exception):
+                logging.error(f"[{country.name}] {url} failed: {result}")
+                continue
+
+            html, error_reason, _, _ = result
+            if html:
+                articles = scrape_articles(url, html, keywords, country.name)
+                all_articles.extend(articles)
+
+        # build one combined feed JSON
+        status = "success" if all_articles else "empty"
+        rss_json = {
+            "channel": {
+                "title": "Main Feed",
+                "description": f"Scraped articles for {country.name}",
+                "link": None,  # multiple sources, so no single URL
+                "items": all_articles,
+                "meta": {
+                    "status": status,
+                    "article_count": len(all_articles),
+                },
+            }
+        }
+
+        # save/update one row per country + feed_type
+        saved_row = await db.scrapperdata.find_unique(
+            where={"country_id_feed_type": {"country_id": country.id, "feed_type": "MAIN_FEED"}}
+        )
+
+        if saved_row:
+            await db.scrapperdata.update(
+                where={"id": saved_row.id},
+                data={
+                    "content": json.dumps(rss_json, ensure_ascii=False),
+                    "updated_at": datetime.now(),
+                },
+            )
+        else:
+            await db.scrapperdata.create(
+                data={
+                    "country_id": country.id,
+                    "feed_type": "MAIN_FEED",
+                    "content": json.dumps(rss_json, ensure_ascii=False),
+                }
+            )
+
+        return len(all_articles)
 
 
 # ----------------------------

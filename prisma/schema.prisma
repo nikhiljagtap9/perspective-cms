@@ -222,7 +222,7 @@ model UsMentionsKeyword {
 model ScrapperData {
   id            Int       @id @default(autoincrement())
   country_id    String
-  url           String
+  url           String?
   feed_type     FeedType
   content       String?
   etag          String?    // <-- NEW
@@ -232,7 +232,7 @@ model ScrapperData {
 
   Country Country @relation(fields: [country_id], references: [id], onDelete: Cascade)
 
-  @@unique([country_id, url], map: "scrapperdata_countryid_url_unique")
+  @@unique([country_id, feed_type], map: "scrapperdata_countryid_url_unique")
 }
 
 enum FeedType {

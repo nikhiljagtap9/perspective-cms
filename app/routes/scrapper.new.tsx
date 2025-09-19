@@ -32,10 +32,9 @@ export async function loader({}: LoaderFunctionArgs) {
 export async function action({ request }: ActionFunctionArgs) {
   const formData = await request.formData();
   const country_id = formData.get("countryId");
-  const url = formData.get("url") as string;
   const feedType = formData.get("feedType") as string;
 
-  if (!country_id || !url || !feedType) {
+  if (!country_id || !feedType) {
     return json({ error: "All fields are required" }, { status: 400 });
   }
 
@@ -66,7 +65,6 @@ export async function action({ request }: ActionFunctionArgs) {
     // Run Python script 
     const { stdout } = await execFileAsync("./venv/bin/python", [
       "./scripts/scraper.py",
-      url,
       feedTypeLabel,
     ]);
 
@@ -84,7 +82,6 @@ export async function action({ request }: ActionFunctionArgs) {
     const newFeed = await db.scrapperData.create({
       data: {
         country_id,
-        url,
         feed_type: feedType as any,
         content: scrapedContent,
       },
@@ -128,18 +125,6 @@ export default function NewFeed() {
                 ))}
               </SelectContent>
             </Select>
-          </div>
-
-          {/* Feed URL */}
-          <div className="space-y-2">
-            <Label htmlFor="url">Feed URL</Label>
-            <Input
-              id="url"
-              name="url"
-              type="url"
-              required
-              placeholder="https://example.com/feed"
-            />
           </div>
 
           {/* Feed Type */}

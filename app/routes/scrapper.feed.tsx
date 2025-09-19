@@ -36,7 +36,7 @@ export default function FeedPage() {
     <div className="space-y-4">
       <h1 className="text-2xl font-bold">{feed.feed_type}</h1>
       <p className="text-gray-600">
-        Country: {feed.Country.name} | URL: {feed.url}
+        Country: {feed.Country.name}
       </p>
 
       <div className="border p-4 rounded">

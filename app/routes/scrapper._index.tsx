@@ -56,7 +56,6 @@ export default function Scrapper() {
   const filteredFeeds = feedsWithStatus.filter((feed) => {
     const matchesSearch =
       feed.Country.name.toLowerCase().includes(term) ||
-      feed.url.toLowerCase().includes(term) ||
       feed.feed_type.toLowerCase().includes(term) ||
       new Date(feed.created_at).toLocaleDateString().toLowerCase().includes(term);
 
@@ -127,7 +126,6 @@ export default function Scrapper() {
           <TableHeader>
             <TableRow>
               <TableHead>Country</TableHead>
-              <TableHead>Feed URL</TableHead>
               <TableHead>Scrapper URL</TableHead>
               <TableHead>Feed Type</TableHead>
               <TableHead>Status</TableHead>
@@ -140,7 +138,6 @@ export default function Scrapper() {
             {paginatedFeeds.map((feed) => (
               <TableRow key={feed.id}>
                 <TableCell>{feed.Country.name}</TableCell>
-                <TableCell>{feed.url}</TableCell>
                 <TableCell>
                   {`${baseUrl}/api/scrapper/feed/${feed.id}`}
                 </TableCell>

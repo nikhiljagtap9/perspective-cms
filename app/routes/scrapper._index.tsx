@@ -24,6 +24,31 @@ export async function loader({ request }: LoaderFunctionArgs) {
   return json({ feeds, baseUrl });
 }
 
+// function formatDateTime(isoString: string) {
+//   return new Date(isoString).toLocaleString("en-GB", {
+//     timeZone: "UTC",   // force UTC
+//     day: "2-digit",
+//     month: "short",    // "Sep"
+//     year: "numeric",
+//     hour: "2-digit",
+//     minute: "2-digit",
+//     second: "2-digit", // ✅ include seconds
+//     hour12: false
+//   }).replace(",", ""); // remove the comma
+// }
+
+function formatDateTimeLocal(isoString: string) {
+  return new Date(isoString).toLocaleString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false
+  }).replace(",", "");
+}
+
 export default function Scrapper() {
   const { feeds, baseUrl } = useLoaderData<typeof loader>();
   const [searchTerm, setSearchTerm] = useState("");
@@ -164,12 +189,8 @@ export default function Scrapper() {
                     </div>
                   )}
                 </TableCell>
-                <TableCell>
-                  {new Date(feed.created_at).toLocaleDateString()}
-                </TableCell>
-                 <TableCell>
-                  {new Date(feed.updated_at).toLocaleDateString()}
-                </TableCell>
+                <TableCell>{formatDateTimeLocal(feed.created_at)}</TableCell>
+                <TableCell>{formatDateTimeLocal(feed.updated_at)}</TableCell>
                 <TableCell className="flex gap-2 justify-end">
                   <Button variant="secondary" size="sm" asChild>
                     <Link to={`/scrapper/feed?feed_id=${feed.id}`}>View</Link>

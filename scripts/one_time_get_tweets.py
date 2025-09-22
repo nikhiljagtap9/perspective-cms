@@ -17,13 +17,13 @@ BASE_URL = "https://api.twitter.com/2"
 
 TARGET_COUNTRIES = [
     "India",
-    # "China",
-    # "Saudi Arabia",
-    # "Cameroon",
-    # "Israel",
-    # "Qatar",
-    # "Belarus",
-    # "Iraq",
+    "China",
+    "Saudi Arabia",
+    "Cameroon",
+    "Israel",
+    "Qatar",
+    "Belarus",
+    "Iraq",
 ]
 
 API_HITS = 0

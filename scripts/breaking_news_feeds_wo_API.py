@@ -1,32 +1,11 @@
 import asyncio
 import datetime
+import html
 import json
 import logging
 import traceback
-import httpx
-import os
-from dotenv import load_dotenv
+from playwright.async_api import async_playwright
 from prisma import Prisma
-
-# ----------------------------
-# Config
-# ----------------------------
-load_dotenv()
-BEARER_TOKEN = os.getenv("TWITTER_BEARER_TOKEN")
-BASE_URL = "https://api.twitter.com/2"
-
-API_HITS = 0
-
-SOURCES = {
-    "India": {"handle": "ndtv", "keyword": "#BREAKING"},
-    "Israel": {"handle": "N12News", "keyword": "#BREAKING"},
-    "Belarus": {"handle": "Pozirk_online", "keyword": "Belarus"},
-    "Iraq": {"handle": "SHAFAQNEWSENG", "keyword": "#Iraq"},
-    "Saudi Arabia": {"handle": "Saudi_Gazette", "keyword": "#BREAKING"},
-    "Cameroon": {"handle": "TheCameroonianZ", "keyword": "#Cameroon"},
-    "Qatar": {"handle": "dohanews", "keyword": "#Qatar"},
-    "China": {"handle": "ChinaDaily", "keyword": "China"},
-}
 
 # ----------------------------
 # Logging
@@ -41,63 +20,79 @@ logging.basicConfig(
 )
 
 # ----------------------------
-# Twitter API call
+# Breaking News Sources (Name → Handle + Keyword)
 # ----------------------------
-async def get_tweets(username: str, keyword: str = None, limit: int = 10):
-    global API_HITS
-    username = username.lstrip('@')
-    headers = {"Authorization": f"Bearer {BEARER_TOKEN}"}
+SOURCES = {
+    "India": {"handle": "ndtv", "keyword": "#BREAKING"},
+    "Israel": {"handle": "N12News", "keyword": "#BREAKING"},
+    "Belarus": {"handle": "Pozirk_online", "keyword": "Belarus"},
+    "Iraq": {"handle": "SHAFAQNEWSENG", "keyword": "#Iraq"},
+    "Saudi Arabia": {"handle": "Saudi_Gazette", "keyword": "#BREAKING"},
+    "Cameroon": {"handle": "TheCameroonianZ", "keyword": "#Cameroon"},
+    "Qatar": {"handle": "dohanews", "keyword": "#Qatar"},
+    "China": {"handle": "ChinaDaily", "keyword": "China"},
+}
 
-    query = f"from:{username}"
-    if keyword:
-        query += f" {keyword}"
+# ----------------------------
+# Fetch Tweets with Playwright
+# ----------------------------
+async def get_tweets(username: str, keyword: str, limit: int = 10):
+    url = f"https://twitter.com/{username.lstrip('@')}"
+    tweets_data = []
 
-    API_HITS += 1
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.get(
-            f"{BASE_URL}/tweets/search/recent",
-            headers=headers,
-            params={
-                "query": query,
-                "max_results": min(limit, 100),
-                "tweet.fields": "created_at",
-                "expansions": "attachments.media_keys",
-                "media.fields": "url,preview_image_url,type"
-            }
-        )
-        if resp.status_code != 200:
-            logging.error(f"❌ Error {resp.status_code} for {username}: {resp.text}")
-            return []
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        page = await browser.new_page()
+        await page.goto(url, timeout=60000, wait_until="domcontentloaded")
+        await page.wait_for_timeout(5000)
 
-        tweets_json = resp.json()
+        # Scroll to load more
+        for _ in range(3):
+            await page.mouse.wheel(0, 2000)
+            await page.wait_for_timeout(2000)
 
-        # Map media
-        media_map = {}
-        for m in tweets_json.get("includes", {}).get("media", []):
-            if m["type"] == "photo" and "url" in m:
-                media_map[m["media_key"]] = m["url"]
-            elif m["type"] in ("video", "animated_gif") and "preview_image_url" in m:
-                media_map[m["media_key"]] = m["preview_image_url"]
+        tweets = await page.query_selector_all("article")
+        for tweet in tweets:
+            if len(tweets_data) >= limit:
+                break
 
-        tweets_data = []
-        for t in tweets_json.get("data", []):
+            text_elem = await tweet.query_selector("div[lang]")
+            text = await text_elem.inner_text() if text_elem else "[No text]"
+
+            # ✅ only breaking news relevant tweets
+            if keyword.lower() not in text.lower():
+                continue
+
+            time_elem = await tweet.query_selector("time")
+            date_time = await time_elem.get_attribute("datetime") if time_elem else datetime.datetime.utcnow().isoformat()
+
+            link_elem = await tweet.query_selector("a time")
+            link = ""
+            if link_elem:
+                link = await link_elem.evaluate("el => el.parentElement.href")
+
+            img_elems = await tweet.query_selector_all("img")
+            image_urls = []
+            for img in img_elems:
+                src = await img.get_attribute("src")
+                if src and "profile_images" not in src and "emoji" not in src:
+                    image_urls.append(src)
+
             tweets_data.append({
-                "title": t["text"][:50] + "..." if len(t["text"]) > 50 else t["text"],
-                "description": t["text"],
-                "link": f"https://twitter.com/{username}/status/{t['id']}",
-                "guid": {"isPermaLink": True, "value": f"https://twitter.com/{username}/status/{t['id']}"},
-                "dc:creator": username,
-                "pubDate": t["created_at"],
-                "images": [
-                    media_map[m] for m in t.get("attachments", {}).get("media_keys", [])
-                    if m in media_map
-                ],
+                "title": text[:50] + "..." if len(text) > 50 else text,
+                "link": link if link else url,
+                "pubDate": date_time,
+                "description": text,
+                "images": image_urls
             })
 
-        return tweets_data
+        await browser.close()
+
+    return tweets_data
+
 
 # ----------------------------
-# Scrape + Save
+# Scrape & Save Per Country
 # ----------------------------
 async def scrape_country_breaking(db: Prisma, country, handle: str, keyword: str):
     try:
@@ -112,7 +107,6 @@ async def scrape_country_breaking(db: Prisma, country, handle: str, keyword: str
                 "meta": {
                     "status": "success" if tweets else "empty",
                     "tweet_count": len(tweets),
-                    "api_hits": API_HITS,
                 },
                 "image": {
                     "url": "https://abs.twimg.com/icons/apple-touch-icon-192x192.png",
@@ -122,6 +116,7 @@ async def scrape_country_breaking(db: Prisma, country, handle: str, keyword: str
             }
         }
 
+        # Save / update ScrapperData
         saved_row = await db.scrapperdata.find_first(
             where={"country_id": country.id, "feed_type": "BREAKING_NEWS"}
         )
@@ -138,12 +133,12 @@ async def scrape_country_breaking(db: Prisma, country, handle: str, keyword: str
             await db.scrapperdata.create(
                 data={
                     "feed_type": "BREAKING_NEWS",
-                    "country_id": country.id,
+                    "country_id": country.id,   # ✅ real DB id
                     "content": json.dumps(rss_json, ensure_ascii=False),
                 }
             )
 
-        logging.info(f"[BREAKING_NEWS][{country.name}] → {len(tweets)} tweets (API_HITS={API_HITS})")
+        logging.info(f"[BREAKING_NEWS][{country.name}] → {len(tweets)} tweets saved")
         return len(tweets)
 
     except Exception as e:
@@ -151,8 +146,9 @@ async def scrape_country_breaking(db: Prisma, country, handle: str, keyword: str
         traceback.print_exc()
         return 0
 
+
 # ----------------------------
-# Main runner
+# Main Runner
 # ----------------------------
 async def main():
     db = Prisma()
@@ -160,6 +156,7 @@ async def main():
 
     total = 0
     for country_name, info in SOURCES.items():
+        # ✅ resolve real country from DB
         country = await db.country.find_first(where={"name": country_name})
         if not country:
             logging.warning(f"⚠️ Country '{country_name}' not found in DB")
@@ -168,9 +165,10 @@ async def main():
         count = await scrape_country_breaking(db, country, info["handle"], info["keyword"])
         total += count
 
-    logging.info(f"SUMMARY: BREAKING_NEWS={total} tweets, API_HITS={API_HITS}")
+    logging.info(f"SUMMARY: BREAKING_NEWS={total} tweets merged across {len(SOURCES)} countries")
 
     await db.disconnect()
+
 
 if __name__ == "__main__":
     asyncio.run(main())

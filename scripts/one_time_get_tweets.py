@@ -200,18 +200,18 @@ async def main():
             )
 
         # EMBASSY_MENTION
-        embassy_handles = await db.embassypresence.find_many(where={"countryId": country.id})
-        if embassy_handles:
-            total += await scrape_country_handles(
-                db, country, [e.handle for e in embassy_handles if e.handle], "EMBASSY_MENTION"
-            )
+        # embassy_handles = await db.embassypresence.find_many(where={"countryId": country.id})
+        # if embassy_handles:
+        #     total += await scrape_country_handles(
+        #         db, country, [e.handle for e in embassy_handles if e.handle], "EMBASSY_MENTION"
+        #     )
 
         # AMBASSADOR_MENTION
-        diplomat_handles = await db.diplomaticpresence.find_many(where={"countryId": country.id})
-        if diplomat_handles:
-            total += await scrape_country_handles(
-                db, country, [d.handle for d in diplomat_handles if d.handle], "AMBASSADOR_MENTION"
-            )
+        # diplomat_handles = await db.diplomaticpresence.find_many(where={"countryId": country.id})
+        # if diplomat_handles:
+        #     total += await scrape_country_handles(
+        #         db, country, [d.handle for d in diplomat_handles if d.handle], "AMBASSADOR_MENTION"
+        #     )
 
     # Write summary to one file
     with open("summary.log", "a", encoding="utf-8") as f:

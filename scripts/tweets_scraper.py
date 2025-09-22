@@ -10,56 +10,56 @@
 # Writes them into a file called tweets.log.
 
 
-from playwright.sync_api import sync_playwright
+# from playwright.sync_api import sync_playwright
 
-def get_tweets(username, limit=5, logfile="tweets.log"):
-    url = f"https://twitter.com/{username}"
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
-        page.goto(url)
-        page.wait_for_timeout(5000)  # wait for tweets to load
+# def get_tweets(username, limit=5, logfile="tweets.log"):
+#     url = f"https://twitter.com/{username}"
+#     with sync_playwright() as p:
+#         browser = p.chromium.launch(headless=True)
+#         page = browser.new_page()
+#         page.goto(url)
+#         page.wait_for_timeout(5000)  # wait for tweets to load
 
-        tweets = page.query_selector_all("article")
-        with open(logfile, "a", encoding="utf-8") as f:
-            f.write(f"\nTweets from @{username}:\n")
-            for i, tweet in enumerate(tweets[:limit]):
-                # Tweet text
-                text_elem = tweet.query_selector("div[lang]")
-                text = text_elem.inner_text().replace("\n", " ") if text_elem else "[No text]"
+#         tweets = page.query_selector_all("article")
+#         with open(logfile, "a", encoding="utf-8") as f:
+#             f.write(f"\nTweets from @{username}:\n")
+#             for i, tweet in enumerate(tweets[:limit]):
+#                 # Tweet text
+#                 text_elem = tweet.query_selector("div[lang]")
+#                 text = text_elem.inner_text().replace("\n", " ") if text_elem else "[No text]"
 
-                # Date/time
-                time_elem = tweet.query_selector("time")
-                date_time = time_elem.get_attribute("datetime") if time_elem else "[No timestamp]"
+#                 # Date/time
+#                 time_elem = tweet.query_selector("time")
+#                 date_time = time_elem.get_attribute("datetime") if time_elem else "[No timestamp]"
 
-                # Images
-                img_elems = tweet.query_selector_all("img")
-                image_urls = []
-                for img in img_elems:
-                    src = img.get_attribute("src")
-                    # Filter out profile/avatar images
-                    if src and "profile_images" not in src and "emoji" not in src:
-                        image_urls.append(src)
+#                 # Images
+#                 img_elems = tweet.query_selector_all("img")
+#                 image_urls = []
+#                 for img in img_elems:
+#                     src = img.get_attribute("src")
+#                     # Filter out profile/avatar images
+#                     if src and "profile_images" not in src and "emoji" not in src:
+#                         image_urls.append(src)
 
-                # Write to log
-                f.write(f"\n{i+1}. [{date_time}] {text}\n")
-                if image_urls:
-                    f.write("   Images:\n")
-                    for img_url in image_urls:
-                        f.write(f"     - {img_url}\n")
-            f.write("-" * 40 + "\n")
+#                 # Write to log
+#                 f.write(f"\n{i+1}. [{date_time}] {text}\n")
+#                 if image_urls:
+#                     f.write("   Images:\n")
+#                     for img_url in image_urls:
+#                         f.write(f"     - {img_url}\n")
+#             f.write("-" * 40 + "\n")
 
-        browser.close()
+#         browser.close()
 
-if __name__ == "__main__":
-    logfile = "tweets.log"
-    # Clear old log file at start
-    open(logfile, "w", encoding="utf-8").close()
+# if __name__ == "__main__":
+#     logfile = "tweets.log"
+#     # Clear old log file at start
+#     open(logfile, "w", encoding="utf-8").close()
 
-    for user in ["amitmalviya", "sagarikaghose"]:
-        get_tweets(user, limit=5, logfile=logfile)
+#     for user in ["amitmalviya", "sagarikaghose"]:
+#         get_tweets(user, limit=5, logfile=logfile)
 
-    print(f"✅ Tweets with date, time, and images saved in {logfile}")
+#     print(f"✅ Tweets with date, time, and images saved in {logfile}")
 
 
 

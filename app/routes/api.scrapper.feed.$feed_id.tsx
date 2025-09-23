@@ -45,7 +45,11 @@ import { db } from "~/lib/db.server";
 
 function jsonToXml(content: any): string {
   const channel = content.channel;
-  let xml = `<?xml version="1.0" encoding="utf-8"?>\n<rss version="2.0">\n  <channel>\n`;
+   let xml = `<?xml version="1.0" encoding="utf-8"?>\n`;
+  xml += `<rss version="2.0"\n`;
+  xml += `     xmlns:dc="http://purl.org/dc/elements/1.1/"\n`;
+  xml += `     xmlns:media="http://search.yahoo.com/mrss/">\n`;
+  xml += `  <channel>\n`;
 
   xml += `    <title>${channel.title}</title>\n`;
   xml += `    <description>${channel.description}</description>\n`;

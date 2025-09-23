@@ -25,10 +25,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
     url.hostname !== "localhost" &&
     url.hostname !== "127.0.0.1"
   ) {
-    protocol = "https:";
+    protocol = "https";
   }
 
-  const baseUrl = `${protocol}//${url.host}`;
+  const baseUrl = `${protocol}://${url.host}`;
   const feeds = await db.scrapperData.findMany({
     include: { Country: true },
     orderBy: { created_at: "desc" },

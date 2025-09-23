@@ -26,7 +26,7 @@ async def save_feed_log(db: Prisma, feed_type: str, url: str, data: dict, status
             "url": url,
             "response": json.dumps(data, ensure_ascii=False),
             "status": status,
-            "created_at": datetime.datetime.now(),
+           # "created_at": datetime.datetime.now(),
         }
     )
 

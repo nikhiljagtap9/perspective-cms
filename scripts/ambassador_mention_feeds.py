@@ -2,7 +2,7 @@ import asyncio, datetime, json, traceback
 from prisma import Prisma
 from common_feeds import get_tweets, save_feed_log, API_HITS
 
-TARGET_COUNTRIES = ["India"]
+TARGET_COUNTRIES = ["India", "China", "Saudi Arabia", "Cameroon", "Israel", "Qatar", "Belarus", "Iraq"]
 FEED_TYPE = "AMBASSADOR_MENTION"
 
 async def scrape_country_handles(db, country, handles):
@@ -56,7 +56,7 @@ async def main():
         if handles: total += await scrape_country_handles(db, country, handles)
     await save_feed_log(
         db,
-        "SUMMARY",
+        FEED_TYPE,
         "system",
         {"message": f"{FEED_TYPE} TOTAL={total}, API_HITS={API_HITS}"},
         "success"

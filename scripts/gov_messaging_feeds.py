@@ -56,7 +56,7 @@ async def main():
         if handles: total += await scrape_country_handles(db, country, handles)
     await save_feed_log(
         db,
-        "SUMMARY",
+        FEED_TYPE,
         "system",
         {"message": f"{FEED_TYPE} TOTAL={total}, API_HITS={API_HITS}"},
         "success"

@@ -25,7 +25,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     url.hostname !== "localhost" &&
     url.hostname !== "127.0.0.1"
   ) {
-    protocol = "https";
+    protocol = "https:";
   }
 
   const baseUrl = `${protocol}//${url.host}`;

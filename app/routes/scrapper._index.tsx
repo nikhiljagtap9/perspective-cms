@@ -16,7 +16,19 @@ import { useState } from "react";
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const url = new URL(request.url);
-  const baseUrl = `${url.protocol}//${url.host}`;
+
+  // Default protocol from request
+  let protocol = url.protocol.replace(":", "");
+
+  // Force https if not localhost
+  if (
+    url.hostname !== "localhost" &&
+    url.hostname !== "127.0.0.1"
+  ) {
+    protocol = "https";
+  }
+
+  const baseUrl = `${protocol}//${url.host}`;
   const feeds = await db.scrapperData.findMany({
     include: { Country: true },
     orderBy: { created_at: "desc" },

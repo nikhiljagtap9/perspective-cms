@@ -8,3 +8,16 @@ node_modules
 *.log
 /prisma/migrations
 /venv
+
+
+# ----------------------------
+# Python cache / build files
+# ----------------------------
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pdb
+*.egg-info/
+*.egg
+dist/

@@ -237,7 +237,7 @@ model ScrapperData {
 
 model FeedLog {
   id         String   @id @default(cuid())
-  feed_type  String               // e.g. GOVERNMENT_MESSAGING, LEADERSHIP_MESSAGING
+  feed_type  FeedType               // e.g. GOVERNMENT_MESSAGING, LEADERSHIP_MESSAGING
   url        String?              // API request URL
   response   String               // Full JSON response (or error message)
   status     String               // success, empty, rate_limited, error_429, error_403, etc.

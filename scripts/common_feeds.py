@@ -34,9 +34,20 @@ async def save_feed_log(db: Prisma, feed_type: str, url: str, data: dict, status
 # ----------------------------
 # Get Tweets (with rate limit handling)
 # ----------------------------
+
 async def get_tweets(db: Prisma, username: str, feed_type: str, limit: int = 10):
     global API_HITS
-    username = username.lstrip('@')  # normalize
+
+    # Skip if handle is empty or not a string
+    if not username or not isinstance(username, str):
+        await save_feed_log(db, feed_type, "N/A", {"error": "Invalid handle"}, "skipped")
+        return []
+
+    username = username.strip().lstrip('@')  # normalize
+    if not username:
+        await save_feed_log(db, feed_type, "N/A", {"error": "Empty handle after cleanup"}, "skipped")
+        return []
+
     headers = {"Authorization": f"Bearer {BEARER_TOKEN}"}
 
     # Restrict to past 48 hours

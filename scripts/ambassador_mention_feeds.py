@@ -2,14 +2,20 @@ import asyncio, datetime, json, traceback
 from prisma import Prisma
 from common_feeds import get_tweets, save_feed_log, API_HITS
 
-TARGET_COUNTRIES = ["India", "China", "Saudi Arabia", "Cameroon", "Israel", "Qatar", "Belarus", "Iraq"]
+TARGET_COUNTRIES = ["India"]
 FEED_TYPE = "AMBASSADOR_MENTION"
 
 async def scrape_country_handles(db, country, handles):
     all_tweets = []
     for handle in handles:
-        tweets = await get_tweets(handle, 10, db, FEED_TYPE)
-        await save_feed_log(db, FEED_TYPE, f"https://twitter.com/{handle}", f"{len(tweets)} tweets fetched")
+        tweets = await get_tweets(db, handle, FEED_TYPE, 10)
+        await save_feed_log(
+            db,
+            FEED_TYPE,
+            f"https://twitter.com/{handle}",
+            {"message": f"{len(tweets)} tweets fetched"},
+            "success" if tweets else "empty"
+        )
         all_tweets.extend(tweets)
 
     all_tweets.sort(key=lambda x: x["pubDate"], reverse=True)
@@ -31,7 +37,13 @@ async def scrape_country_handles(db, country, handles):
     else:
         await db.scrapperdata.create(data={"feed_type": FEED_TYPE, "country_id": country.id, "content": json.dumps(rss_json)})
 
-    await save_feed_log(db, FEED_TYPE, f"scrapperdata/{FEED_TYPE}", f"[{country.name}] saved {len(all_tweets)} tweets")
+    await save_feed_log(
+        db,
+        FEED_TYPE,
+        f"scrapperdata/{FEED_TYPE}",
+        {"message": f"[{country.name}] saved {len(all_tweets)} tweets"},
+        status
+    )
     return len(all_tweets)
 
 async def main():
@@ -42,7 +54,13 @@ async def main():
         if not country: continue
         handles = [g.handle for g in await db.diplomaticpresence.find_many(where={"countryId": country.id}) if g.handle]
         if handles: total += await scrape_country_handles(db, country, handles)
-    await save_feed_log(db, "SUMMARY", "system", f"{FEED_TYPE} TOTAL={total}, API_HITS={API_HITS}")
+    await save_feed_log(
+        db,
+        "SUMMARY",
+        "system",
+        {"message": f"{FEED_TYPE} TOTAL={total}, API_HITS={API_HITS}"},
+        "success"
+    )
     await db.disconnect()
 
 if __name__ == "__main__":

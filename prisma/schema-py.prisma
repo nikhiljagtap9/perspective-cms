@@ -235,6 +235,16 @@ model ScrapperData {
   @@unique([country_id, feed_type], map: "scrapperdata_countryid_url_unique")
 }
 
+model FeedLog {
+  id         String   @id @default(cuid())
+  feed_type  FeedType               // e.g. GOVERNMENT_MESSAGING, LEADERSHIP_MESSAGING
+  url        String?              // API request URL
+  response   String               // Full JSON response (or error message)
+  status     String               // success, empty, rate_limited, error_429, error_403, etc.
+  created_at DateTime @default(now())
+}
+
+
 
 enum FeedType {
   MAIN_FEED

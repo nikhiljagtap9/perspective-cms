@@ -19,7 +19,7 @@ API_HITS = 0
 # ----------------------------
 # Save logs to FeedLog table
 # ----------------------------
-async def save_log(db: Prisma, feed_type: str, url: str, data: dict, status: str):
+async def save_feed_log(db: Prisma, feed_type: str, url: str, data: dict, status: str):
     await db.feedlog.create(
         data={
             "feed_type": feed_type,
@@ -42,7 +42,7 @@ async def get_tweets(db: Prisma, username: str, feed_type: str, limit: int = 10)
     # Restrict to past 48 hours
     #start_time = (datetime.now(timezone.utc) - timedelta(hours=LOOKBACK_HOURS)).isoformat()
     start_time = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=LOOKBACK_HOURS)).isoformat()
-    
+
     async with httpx.AsyncClient(timeout=30) as client:
         while True:  # retry loop
             API_HITS += 1
@@ -64,20 +64,20 @@ async def get_tweets(db: Prisma, username: str, feed_type: str, limit: int = 10)
                 reset_after = int(resp.headers.get("x-rate-limit-reset", 0))
                 now = int(datetime.datetime.now().timestamp())
                 wait_time = max(reset_after - now, 15)
-                await save_log(db, feed_type, resp.url.__str__(), {"error": "429 Too Many Requests"}, "rate_limited")
+                await save_feed_log(db, feed_type, resp.url.__str__(), {"error": "429 Too Many Requests"}, "rate_limited")
                 print(f"⚠️ Rate limit hit for {username}. Sleeping {wait_time}s...")
                 await asyncio.sleep(wait_time)
                 continue  # retry after sleeping
 
             # ✅ Other errors
             if resp.status_code != 200:
-                await save_log(db, feed_type, resp.url.__str__(), resp.json(), f"error_{resp.status_code}")
+                await save_feed_log(db, feed_type, resp.url.__str__(), resp.json(), f"error_{resp.status_code}")
                 return []
 
             break  # success → exit loop
 
         tweets_json = resp.json()
-        await save_log(db, feed_type, resp.url.__str__(), tweets_json, "success")
+        await save_feed_log(db, feed_type, resp.url.__str__(), tweets_json, "success")
 
         # 🔹 Map media
         media_map = {}

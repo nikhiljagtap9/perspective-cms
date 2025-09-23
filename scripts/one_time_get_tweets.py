@@ -186,32 +186,32 @@ async def main():
             continue
 
         # GOVERNMENT_MESSAGING
-        gov_handles = await db.governmentmessaging.find_many(where={"countryId": country.id})
-        if gov_handles:
-            total += await scrape_country_handles(
-                db, country, [g.handle for g in gov_handles if g.handle], "GOVERNMENT_MESSAGING"
-            )
+        # gov_handles = await db.governmentmessaging.find_many(where={"countryId": country.id})
+        # if gov_handles:
+        #     total += await scrape_country_handles(
+        #         db, country, [g.handle for g in gov_handles if g.handle], "GOVERNMENT_MESSAGING"
+        #     )
 
         # LEADERSHIP_MESSAGING
-        leader_handles = await db.leadershipmessaging.find_many(where={"countryId": country.id})
-        if leader_handles:
-            total += await scrape_country_handles(
-                db, country, [l.handle for l in leader_handles if l.handle], "LEADERSHIP_MESSAGING"
-            )
+        # leader_handles = await db.leadershipmessaging.find_many(where={"countryId": country.id})
+        # if leader_handles:
+        #     total += await scrape_country_handles(
+        #         db, country, [l.handle for l in leader_handles if l.handle], "LEADERSHIP_MESSAGING"
+        #     )
 
         # EMBASSY_MENTION
-        # embassy_handles = await db.embassypresence.find_many(where={"countryId": country.id})
-        # if embassy_handles:
-        #     total += await scrape_country_handles(
-        #         db, country, [e.handle for e in embassy_handles if e.handle], "EMBASSY_MENTION"
-        #     )
+        embassy_handles = await db.embassypresence.find_many(where={"countryId": country.id})
+        if embassy_handles:
+            total += await scrape_country_handles(
+                db, country, [e.handle for e in embassy_handles if e.handle], "EMBASSY_MENTION"
+            )
 
         # AMBASSADOR_MENTION
-        # diplomat_handles = await db.diplomaticpresence.find_many(where={"countryId": country.id})
-        # if diplomat_handles:
-        #     total += await scrape_country_handles(
-        #         db, country, [d.handle for d in diplomat_handles if d.handle], "AMBASSADOR_MENTION"
-        #     )
+        diplomat_handles = await db.diplomaticpresence.find_many(where={"countryId": country.id})
+        if diplomat_handles:
+            total += await scrape_country_handles(
+                db, country, [d.handle for d in diplomat_handles if d.handle], "AMBASSADOR_MENTION"
+            )
 
     # Write summary to one file
     with open("summary.log", "a", encoding="utf-8") as f:

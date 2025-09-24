@@ -60,40 +60,57 @@ export default function FeedPage() {
               </a>
             </div>
 
-            {/* Articles */}
-            <div className="space-y-4">
-              {parsedContent.channel.items.length > 0 ? (
-                parsedContent.channel.items.map((item: any, idx: number) => (
-                  <div
-                    key={idx}
-                    className="p-3 border rounded hover:bg-gray-800"
-                  >
-                    <h4 className="font-semibold">{item.title}</h4>
-                    <p className="text-sm text-gray-600">{item.pubDate}</p>
-                    <a
-                      href={item.link}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-blue-500 underline"
-                    >
-                      {item.link}
-                    </a>
-                  </div>
-                ))
-              ) : (
-                <div className="p-3 border rounded bg-gray-100">
-                  <p className="text-sm text-gray-600 italic">
-                    ⚠️ No articles found for this source.
-                  </p>
-                  {parsedContent.channel.meta && (
-                    <p className="text-xs text-gray-500">
-                      Status: {parsedContent.channel.meta.status} | 
-                      Articles: {parsedContent.channel.meta.article_count}
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
+           {/* Articles */}
+<div className="space-y-4">
+  {parsedContent.channel.items.length > 0 ? (
+    parsedContent.channel.items.map((item: any, idx: number) => (
+      <div
+        key={idx}
+        className="p-3 border rounded hover:bg-gray-800"
+      >
+        <h4 className="font-semibold">{item.title}</h4>
+
+        {/* For DAILY_SUMMARY, show description as Markdown text */}
+        {feed.feed_type === "DAILY_SUMMARY" ? (
+          <div className="prose prose-sm max-w-none text-gray-200">
+            <pre className="whitespace-pre-wrap text-sm">
+              {item.description}
+            </pre>
+          </div>
+        ) : (
+          <>
+            <p className="text-sm text-gray-600">{item.pubDate}</p>
+            {item.link && (
+              <a
+                href={item.link}
+                target="_blank"
+                rel="noreferrer"
+                className="text-blue-500 underline"
+              >
+                {item.link}
+              </a>
+            )}
+          </>
+        )}
+      </div>
+    ))
+  ) : (
+    <div className="p-3 border rounded bg-gray-100">
+      <p className="text-sm text-gray-600 italic">
+        ⚠️ No articles found for this source.
+      </p>
+      {parsedContent.channel.meta && (
+        <p className="text-xs text-gray-500">
+          Status: {parsedContent.channel.meta.status} | 
+          Articles: {parsedContent.channel.meta.article_count}
+        </p>
+      )}
+    </div>
+  )}
+</div>
+
+
+            
 
           </div>
         ) : (

@@ -9,11 +9,6 @@ from dotenv import load_dotenv
 from openai import OpenAI
 from prisma import Prisma
 
-# PDF libs
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-
 # ----------------------------
 # Config
 # ----------------------------
@@ -52,7 +47,6 @@ async def save_log(db: Prisma, feed_type: str, url: str, data: dict, status: str
         )
     except Exception as e:
         logging.error(f"⚠️ Failed to log in FeedLog: {e}")
-
 
 # ----------------------------
 # Generate AI Summary
@@ -125,55 +119,6 @@ Style:
 
     return response.choices[0].message.content
 
-
-# ----------------------------
-# Save PDF Report
-# ----------------------------
-async def save_pdf_report(feed_id: int, country_name: str, summary: str):
-    try:
-        # Create reports directory if it doesn’t exist
-        os.makedirs("reports", exist_ok=True)
-
-        # Date stamp for filename
-        date_stamp = datetime.datetime.now(datetime.UTC).strftime("%Y%m%d")
-
-        # File path
-        file_path = f"reports/report_{country_name}.pdf"
-
-        # PDF setup
-        doc = SimpleDocTemplate(file_path, pagesize=A4)
-        styles = getSampleStyleSheet()
-        story = []
-
-        # Title
-        story.append(Paragraph(f"<b>{country_name} Daily Summary Report</b>", styles["Title"]))
-        story.append(Spacer(1, 12))
-
-        # Date
-        story.append(Paragraph(
-            f"Generated on: {datetime.datetime.now().strftime('%d %b %Y %H:%M %Z')}",
-            styles["Normal"]
-        ))
-        story.append(Spacer(1, 12))
-
-        # Content
-        for line in summary.split("\n"):
-            if line.strip():
-                story.append(Paragraph(line.strip(), styles["Normal"]))
-                story.append(Spacer(1, 6))
-
-        # Build PDF
-        doc.build(story)
-
-        logging.info(f"📄 PDF report saved: {file_path}")
-        return file_path
-
-    except Exception as e:
-        logging.error(f"⚠️ Failed to generate PDF report: {e}")
-        traceback.print_exc()
-        return None
-
-
 # ----------------------------
 # Save to scrapperdata
 # ----------------------------
@@ -207,28 +152,21 @@ async def save_summary(db: Prisma, country, summary: str):
         )
 
         if saved_row:
-            updated = await db.scrapperdata.update(
+            await db.scrapperdata.update(
                 where={"id": saved_row.id},
                 data={
                     "content": json.dumps(rss_json, ensure_ascii=False),
                     "updated_at": datetime.datetime.now(datetime.UTC),
                 }
             )
-            feed_id = updated.id
         else:
-            created = await db.scrapperdata.create(
+            await db.scrapperdata.create(
                 data={
                     "feed_type": FEED_TYPE,
                     "country_id": country.id,
                     "content": json.dumps(rss_json, ensure_ascii=False),
                 }
             )
-            feed_id = created.id
-
-        # Save PDF
-        pdf_path = await save_pdf_report(feed_id, country.name, summary)
-        if pdf_path:
-            logging.info(f"[{FEED_TYPE}][{country.name}] PDF created at {pdf_path}")
 
         logging.info(f"[{FEED_TYPE}][{country.name}] saved successfully")
         await save_log(db, FEED_TYPE, f"/daily-summary/{country.id}", rss_json, "success")
@@ -240,7 +178,6 @@ async def save_summary(db: Prisma, country, summary: str):
         await save_log(db, FEED_TYPE, f"/daily-summary/{country.id}", {"error": str(e)}, "error")
         return False
 
-
 # ----------------------------
 # Main runner
 # ----------------------------
@@ -248,6 +185,8 @@ async def main():
     db = Prisma()
     await db.connect()
 
+    
+   
     try:
         country = await db.country.find_first(where={"name": "India"})
         if not country:
@@ -263,6 +202,19 @@ async def main():
     finally:
         await db.disconnect()
 
+    # Fetch ALL countries dynamically
+
+    countries = await db.country.find_many()
+    for country in countries:
+        try:
+            summary = await generate_summary(country.name)
+            await save_summary(db, country, summary)
+        except Exception as e:
+            logging.error(f"[{FEED_TYPE}][{country.name}] Exception: {e}")
+            traceback.print_exc()
+            await save_log(db, FEED_TYPE, f"/daily-summary/{country.id}", {"error": str(e)}, "error")
+
+    await db.disconnect()
 
 if __name__ == "__main__":
     asyncio.run(main())

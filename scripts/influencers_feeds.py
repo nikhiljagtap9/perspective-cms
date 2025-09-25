@@ -2,16 +2,25 @@ import asyncio, datetime, json, traceback
 from prisma import Prisma
 from common_feeds import get_tweets, save_feed_log, API_HITS
 
-TARGET_COUNTRIES = ["India", "China", "Saudi Arabia", "Cameroon", "Israel", "Qatar", "Belarus", "Iraq"]
-FEED_TYPE = "LEADERSHIP_MESSAGING"
+TARGET_COUNTRIES = [
+    "India", 
+    "China", 
+    "Saudi Arabia", 
+    "Cameroon", 
+    "Israel", 
+    "Qatar", 
+    "Belarus", 
+    "Iraq"
+    ]
+FEED_TYPE = "INFLUENCERS"
 
 async def scrape_country_handles(db, country, handles):
     all_tweets = []
     for handle in handles:
         tweets = await get_tweets(db, handle, FEED_TYPE, 10)
-        # all_tweets.extend(tweets)
         if tweets:  # only extend if not empty
             all_tweets.extend(tweets)
+
 
     all_tweets.sort(key=lambda x: x["pubDate"], reverse=True)
     status = "success" if all_tweets else "empty"
@@ -47,11 +56,11 @@ async def main():
     for cname in TARGET_COUNTRIES:
         country = await db.country.find_first(where={"name": cname})
         if not country: continue
-        handles = [g.handle for g in await db.leadershipmessaging.find_many(where={"countryId": country.id}) if g.handle]
+        handles = [g.handle for g in await db.influencer.find_many(where={"countryId": country.id}) if g.handle]
         if handles: total += await scrape_country_handles(db, country, handles)
     # await save_feed_log(
     #     db,
-    #     FEED_TYPE
+    #     FEED_TYPE,
     #     "system",
     #     {"message": f"{FEED_TYPE} TOTAL={total}, API_HITS={API_HITS}"},
     #     "success"

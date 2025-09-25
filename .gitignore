@@ -9,7 +9,7 @@ node_modules
 /prisma/migrations
 /venv
 /reports
-
+public/reports/
 
 # ----------------------------
 # Python cache / build files

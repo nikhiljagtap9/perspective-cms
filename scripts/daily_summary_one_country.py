@@ -186,7 +186,7 @@ async def main():
     await db.connect()
 
     
-   
+    # Fetch India country only
     try:
         country = await db.country.find_first(where={"name": "India"})
         if not country:
@@ -201,20 +201,6 @@ async def main():
 
     finally:
         await db.disconnect()
-
-    # Fetch ALL countries dynamically
-
-    countries = await db.country.find_many()
-    for country in countries:
-        try:
-            summary = await generate_summary(country.name)
-            await save_summary(db, country, summary)
-        except Exception as e:
-            logging.error(f"[{FEED_TYPE}][{country.name}] Exception: {e}")
-            traceback.print_exc()
-            await save_log(db, FEED_TYPE, f"/daily-summary/{country.id}", {"error": str(e)}, "error")
-
-    await db.disconnect()
 
 if __name__ == "__main__":
     asyncio.run(main())

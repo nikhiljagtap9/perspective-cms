@@ -10,7 +10,7 @@ import httpx
 from bs4 import BeautifulSoup
 from prisma import Prisma
 from tqdm.asyncio import tqdm_asyncio
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 # ----------------------------
 # User Agents
@@ -145,6 +145,8 @@ def scrape_articles(url: str, html: str, keywords: list[str], country_name: str)
     if icon_link and icon_link.has_attr("href"):
         favicon_url = urljoin(url, icon_link["href"])
 
+    parsed_domain = urlparse(url).netloc  # extract domain (e.g., "www.thehindu.com")    
+
     for a in soup.find_all("a", href=True):
         title = a.get_text(strip=True)
         link = a["href"]
@@ -161,6 +163,7 @@ def scrape_articles(url: str, html: str, keywords: list[str], country_name: str)
 
         # --- Collect context ---
         context_parts = [title]
+        thumbnail_url = ''  # initialize empty for per-article image
 
         parent = a.find_parent()
         if parent:
@@ -170,10 +173,13 @@ def scrape_articles(url: str, html: str, keywords: list[str], country_name: str)
                 if text:
                     context_parts.append(text)
 
-            # Add image alt text if available
+            # Add image alt text + pick article image
             img = parent.find("img")
-            if img and img.has_attr("alt") and img["alt"].strip():
-                context_parts.append(img["alt"].strip())
+            if img:
+                if img.has_attr("alt") and img["alt"].strip():
+                    context_parts.append(img["alt"].strip())
+                if img.has_attr("src") and img["src"].strip():
+                    thumbnail_url = urljoin(url, img["src"].strip())
 
         # Combine context
         full_context = " ".join(context_parts).lower()
@@ -190,9 +196,10 @@ def scrape_articles(url: str, html: str, keywords: list[str], country_name: str)
                 "description": " ".join(context_parts)[:500],  # context used as description
                 "link": link,
                 "guid": {"isPermaLink": True, "value": link},
-                "dc:creator": "scraper",
+                "dc:creator": parsed_domain,
                 "pubDate": pub_time,
                 "thumbnails": favicon_url, 
+                "thumbnail_url": thumbnail_url,
             }
         )
 

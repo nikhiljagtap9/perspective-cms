@@ -222,11 +222,8 @@ function jsonToXml(content: any): string {
         xml += `        <ctv:thumbnails>${escapeXml(thumb)}</ctv:thumbnails>\n`;
       }
     }
-    if (item.thumbnails) {
-      const thumbs = Array.isArray(item.thumbnails) ? item.thumbnails : [item.thumbnails];
-      for (const thumb of thumbs) {
-        xml += `        <ctv:thumbnail_url>${escapeXml(thumb)}</ctv:thumbnail_url>\n`;
-      }
+    if (item.thumbnail_url) {
+      xml += `        <ctv:thumbnail_url>${escapeXml(item.thumbnail_url)}</ctv:thumbnail_url>\n`;
     }
     if (item.sentiment) {
       xml += `        <ctv:sentiment>${escapeXml(item.sentiment)}</ctv:sentiment>\n`;

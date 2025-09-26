@@ -131,14 +131,18 @@ Style:
 # ----------------------------
 async def save_pdf_report(feed_id: int, country_name: str, summary: str):
     try:
-        # Create reports directory if it doesn’t exist
-        os.makedirs("reports", exist_ok=True)
+
+        BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # folder of this script
+        PUBLIC_DIR = os.path.join(BASE_DIR, "..", "public")   # go up one level, then into public
+        REPORTS_DIR = os.path.join(PUBLIC_DIR, "reports")
+
+        # Ensure reports/ folder exists
+        os.makedirs(REPORTS_DIR, exist_ok=True)
 
         # Date stamp for filename
         date_stamp = datetime.datetime.now(datetime.UTC).strftime("%Y%m%d")
 
-        # File path
-        file_path = f"reports/report_{country_name}.pdf"
+        file_path = os.path.join(REPORTS_DIR, f"report_{country_name}.pdf")
 
         # PDF setup
         doc = SimpleDocTemplate(file_path, pagesize=A4)
@@ -249,7 +253,7 @@ async def main():
     await db.connect()
 
     try:
-        country = await db.country.find_first(where={"name": "India"})
+        country = await db.country.find_first(where={"name": "Afghanistan"})
         if not country:
             logging.warning("⚠️ Country 'India' not found in DB")
         else:

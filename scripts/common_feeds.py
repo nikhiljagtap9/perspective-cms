@@ -75,7 +75,7 @@ async def get_tweets(db: Prisma, username: str, feed_type: str, limit: int = 10,
                     "max_results": min(limit, 100),
                     "tweet.fields": "created_at",
                     "expansions": "attachments.media_keys,author_id",  # include user info + media
-                    "media.fields": "url,preview_image_url,type",
+                    "media.fields": "url,preview_image_url,type,variants",
                     "user.fields": "name,username,profile_image_url",   # get avatar
                     "start_time": start_time,
                 },
@@ -139,10 +139,18 @@ async def get_tweets(db: Prisma, username: str, feed_type: str, limit: int = 10,
             # Format like Twitter style: "7:40 PM · Sep 24, 2025"
             pub_date = dt.strftime("%-I:%M %p · %b %d, %Y")
 
+            # pick first media url or fallback to avatar
+            media_keys = t.get("attachments", {}).get("media_keys", [])
+            thumbnail_url = None
+            for mk in media_keys:
+                if mk in media_map:
+                    thumbnail_url = media_map[mk]
+                    break
+
             tweets_data.append({
-                "title": t["text"][:50] + "..." if len(t["text"]) > 50 else t["text"],
+                "title": user_info.get("name", author_username).title(),
                 "description": t["text"],
-                "link": f"https://twitter.com/{author_username}/status/{t['id']}",  # 👈 correct author
+                "link": f"https://twitter.com/{author_username}/status/{t['id']}",  # correct author
                 "guid": {
                     "isPermaLink": True,
                     "value": f"https://twitter.com/{author_username}/status/{t['id']}"
@@ -154,6 +162,7 @@ async def get_tweets(db: Prisma, username: str, feed_type: str, limit: int = 10,
                     for m in t.get("attachments", {}).get("media_keys", [])
                     if m in media_map
                 ],
-                "thumbnails": profile_photo  # avatar
+                "thumbnails": profile_photo,  # avatar
+                "thumbnail_url": thumbnail_url  # main media
             })
         return tweets_data

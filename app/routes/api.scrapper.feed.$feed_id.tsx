@@ -172,19 +172,20 @@ function jsonToXml(content: any): string {
   let xml = `<?xml version="1.0" encoding="utf-8"?>\n`;
   xml += `<rss version="2.0"\n`;
   xml += `     xmlns:dc="http://purl.org/dc/elements/1.1/"\n`;
-  xml += `     xmlns:media="http://search.yahoo.com/mrss/">\n`;
+  xml += `     xmlns:media="http://search.yahoo.com/mrss/"\n`;
+  xml += `     xmlns:ctv="http://example.com/ctv">\n`;
   xml += `  <channel>\n`;
 
-  // escape risky string fields
+  // channel metadata
   xml += `    <title>${escapeXml(channel.title)}</title>\n`;
   xml += `    <description>${escapeXml(channel.description)}</description>\n`;
   xml += `    <link>${escapeXml(channel.link ?? "")}</link>\n`;
 
   if (channel.lastBuildDate) {
-    xml += `    <lastBuildDate>${channel.lastBuildDate}</lastBuildDate>\n`; // safe
+    xml += `    <lastBuildDate>${channel.lastBuildDate}</lastBuildDate>\n`;
   }
   if (channel.language) {
-    xml += `    <language>${channel.language}</language>\n`; // safe
+    xml += `    <language>${channel.language}</language>\n`;
   }
 
   if (channel.image) {
@@ -195,6 +196,7 @@ function jsonToXml(content: any): string {
     xml += `    </image>\n`;
   }
 
+  // items loop
   for (const item of channel.items || []) {
     xml += `    <item>\n`;
     xml += `      <title>${escapeXml(item.title)}</title>\n`;
@@ -205,28 +207,36 @@ function jsonToXml(content: any): string {
     if (item.guid) {
       xml += `      <guid isPermaLink="${item.guid.isPermaLink}">${escapeXml(item.guid.value)}</guid>\n`;
     }
-    if (item["dc:creator"]) {
-      xml += `      <dc:creator>${escapeXml(item["dc:creator"])}</dc:creator>\n`;
-    }
     if (item.pubDate) {
-      xml += `      <pubDate>${item.pubDate}</pubDate>\n`; // safe
+      xml += `      <pubDate>${item.pubDate}</pubDate>\n`;
     }
-    // Add support for thumbnails
-   if (item.thumbnails) {
+
+    // extra <ctv:clip> section
+    xml += `      <ctv:clip>\n`;
+    if (item["dc:creator"]) {
+      xml += `        <ctv:handle>${escapeXml(item["dc:creator"])}</ctv:handle>\n`;
+    }
+    if (item.thumbnails) {
       const thumbs = Array.isArray(item.thumbnails) ? item.thumbnails : [item.thumbnails];
       for (const thumb of thumbs) {
-        xml += `      <media:thumbnails>${escapeXml(thumb)}</media:thumbnails>\n`;
+        xml += `        <ctv:thumbnails>${escapeXml(thumb)}</ctv:thumbnails>\n`;
       }
     }
-    if (item["media:content"]) {
-      xml += `      <media:content url="${escapeXml(item["media:content"].url)}" />\n`;
+    if (item.sentiment) {
+      xml += `        <ctv:sentiment>${escapeXml(item.sentiment)}</ctv:sentiment>\n`;
     }
+    if (item.language) {
+      xml += `        <ctv:language>${escapeXml(item.language)}</ctv:language>\n`;
+    }
+    xml += `      </ctv:clip>\n`;
+
     xml += `    </item>\n`;
   }
 
   xml += `  </channel>\n</rss>`;
   return xml;
 }
+
 
 
 export async function loader({ params }: LoaderFunctionArgs) {

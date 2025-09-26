@@ -35,7 +35,7 @@ async def save_feed_log(db: Prisma, feed_type: str, url: str, data: dict, status
 # Get Tweets (with rate limit handling)
 # ----------------------------
 
-async def get_tweets(db: Prisma, username: str, feed_type: str, limit: int = 10, mode: str = "self"):
+async def get_tweets(db: Prisma, username: str, feed_type: str, limit: int = 10):
     global API_HITS
 
     # Skip if handle is empty or not a string
@@ -51,18 +51,8 @@ async def get_tweets(db: Prisma, username: str, feed_type: str, limit: int = 10,
     headers = {"Authorization": f"Bearer {BEARER_TOKEN}"}
 
     # Restrict to past 48 hours
-    start_time = (
-        datetime.datetime.now(datetime.timezone.utc)
-        - datetime.timedelta(hours=LOOKBACK_HOURS)
-    ).isoformat()
-
-    # 🔹 Build search query based on mode
-    if mode == "self":
-        search_query = f"from:{username} -is:retweet -is:reply"  # exclude RTs & replies  # only this user’s tweets
-    elif mode == "about":
-        search_query = f"@{username} -from:{username}"   # tweets by others mentioning the user
-    else:
-        search_query = username   # fallback → simple keyword search
+    #start_time = (datetime.now(timezone.utc) - timedelta(hours=LOOKBACK_HOURS)).isoformat()
+    start_time = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=LOOKBACK_HOURS)).isoformat()
 
     async with httpx.AsyncClient(timeout=30) as client:
         while True:  # retry loop
@@ -71,14 +61,13 @@ async def get_tweets(db: Prisma, username: str, feed_type: str, limit: int = 10,
                 f"{BASE_URL}/tweets/search/recent",
                 headers=headers,
                 params={
-                    "query": search_query, 
+                    "query": f"from:{username}",
                     "max_results": min(limit, 100),
                     "tweet.fields": "created_at",
-                    "expansions": "attachments.media_keys,author_id",  # include user info + media
+                    "expansions": "attachments.media_keys",
                     "media.fields": "url,preview_image_url,type",
-                    "user.fields": "name,username,profile_image_url",   # get avatar
-                    "start_time": start_time,
-                },
+                    "start_time": start_time
+                }
             )
 
             # ✅ Handle Rate Limit (429)
@@ -86,28 +75,20 @@ async def get_tweets(db: Prisma, username: str, feed_type: str, limit: int = 10,
                 reset_after = int(resp.headers.get("x-rate-limit-reset", 0))
                 now = int(datetime.datetime.now().timestamp())
                 wait_time = max(reset_after - now, 15)
-                await save_feed_log(
-                    db, feed_type, str(resp.url),
-                    {"error": "429 Too Many Requests"},
-                    "rate_limited"
-                )
+                await save_feed_log(db, feed_type, resp.url.__str__(), {"error": "429 Too Many Requests"}, "rate_limited")
                 print(f"⚠️ Rate limit hit for {username}. Sleeping {wait_time}s...")
                 await asyncio.sleep(wait_time)
                 continue  # retry after sleeping
 
             # ✅ Other errors
             if resp.status_code != 200:
-                await save_feed_log(
-                    db, feed_type, str(resp.url),
-                    resp.json(),
-                    f"error_{resp.status_code}"
-                )
+                await save_feed_log(db, feed_type, resp.url.__str__(), resp.json(), f"error_{resp.status_code}")
                 return []
 
             break  # success → exit loop
 
         tweets_json = resp.json()
-        await save_feed_log(db, feed_type, str(resp.url), tweets_json, "success")
+        await save_feed_log(db, feed_type, resp.url.__str__(), tweets_json, "success")
 
         # 🔹 Map media
         media_map = {}
@@ -117,43 +98,19 @@ async def get_tweets(db: Prisma, username: str, feed_type: str, limit: int = 10,
             elif m["type"] in ("video", "animated_gif") and "preview_image_url" in m:
                 media_map[m["media_key"]] = m["preview_image_url"]
 
-        # 🔹 Map user profiles (author_id → username + profile image)
-        user_map = {}
-        for u in tweets_json.get("includes", {}).get("users", []):
-            user_map[u["id"]] = {
-                "username": u.get("username"),
-                "name": u.get("name"),
-                "profile_image_url": u.get("profile_image_url"),
-            }
-
         tweets_data = []
         for t in tweets_json.get("data", []):
-            author_id = t.get("author_id")
-            user_info = user_map.get(author_id, {})
-            author_username = user_info.get("username", "unknown")
-            profile_photo = user_info.get("profile_image_url")
-
-            # Convert created_at → datetime object
-            dt = datetime.datetime.fromisoformat(t["created_at"].replace("Z", "+00:00"))
-
-            # Format like Twitter style: "7:40 PM · Sep 24, 2025"
-            pub_date = dt.strftime("%-I:%M %p · %b %d, %Y")
-
             tweets_data.append({
                 "title": t["text"][:50] + "..." if len(t["text"]) > 50 else t["text"],
                 "description": t["text"],
-                "link": f"https://twitter.com/{author_username}/status/{t['id']}",  # 👈 correct author
-                "guid": {
-                    "isPermaLink": True,
-                    "value": f"https://twitter.com/{author_username}/status/{t['id']}"
-                },
-                "dc:creator": author_username,  # real author, not the searched handle
-                "pubDate": pub_date,
+                "link": f"https://twitter.com/{username}/status/{t['id']}",
+                "guid": {"isPermaLink": True, "value": f"https://twitter.com/{username}/status/{t['id']}"},
+                "dc:creator": username,
+                "pubDate": t["created_at"],
                 "images": [
-                    media_map[m]
-                    for m in t.get("attachments", {}).get("media_keys", [])
+                    media_map[m] for m in t.get("attachments", {}).get("media_keys", [])
                     if m in media_map
                 ],
-                "thumbnails": profile_photo  # avatar
             })
+
         return tweets_data

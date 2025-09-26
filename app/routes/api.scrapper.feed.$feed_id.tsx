@@ -211,6 +211,10 @@ function jsonToXml(content: any): string {
     if (item.pubDate) {
       xml += `      <pubDate>${item.pubDate}</pubDate>\n`; // safe
     }
+    // Add support for thumbnails
+    if (item.thumbnails) {
+      xml += `      <media:thumbnails url="${escapeXml(item.thumbnails)}" />\n`;
+    }
     if (item["media:content"]) {
       xml += `      <media:content url="${escapeXml(item["media:content"].url)}" />\n`;
     }

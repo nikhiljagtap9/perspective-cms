@@ -2,13 +2,22 @@ import asyncio, datetime, json, traceback
 from prisma import Prisma
 from common_feeds import get_tweets, save_feed_log, API_HITS
 
-TARGET_COUNTRIES = ["India", "China", "Saudi Arabia", "Cameroon", "Israel", "Qatar", "Belarus", "Iraq"]
+TARGET_COUNTRIES = [
+    # "India", 
+    # "China", 
+     "Saudi Arabia", 
+    # "Cameroon", 
+    # "Israel", 
+    # "Qatar", 
+    # "Belarus", 
+    # "Iraq"
+    ]
 FEED_TYPE = "AMBASSADOR_MENTION"
 
 async def scrape_country_handles(db, country, handles):
     all_tweets = []
     for handle in handles:
-        tweets = await get_tweets(db, handle, FEED_TYPE, 10)
+        tweets = await get_tweets(db, handle, FEED_TYPE, 10, mode="about")
         # all_tweets.extend(tweets)
         if tweets:  # only extend if not empty
             all_tweets.extend(tweets)

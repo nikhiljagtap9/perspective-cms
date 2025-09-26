@@ -132,6 +132,7 @@ def scrape_articles(url: str, html: str, keywords: list[str], country_name: str)
             "guid": {"isPermaLink": True, "value": link},
             "dc:creator": "scraper",
             "pubDate": pub_time,
+            "thumbnails": site_logo,
         }
         articles.append(article)
 

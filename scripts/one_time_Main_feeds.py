@@ -10,6 +10,7 @@ import httpx
 from bs4 import BeautifulSoup
 from prisma import Prisma
 from tqdm.asyncio import tqdm_asyncio
+from urllib.parse import urljoin
 
 # ----------------------------
 # User Agents
@@ -138,6 +139,12 @@ def scrape_articles(url: str, html: str, keywords: list[str], country_name: str)
     seen_links = set()   # track duplicates
     soup = BeautifulSoup(html, "html.parser")
 
+    # 🔹 Find site favicon/logo once per page
+    favicon_url = ''
+    icon_link = soup.find("link", rel=lambda v: v and "icon" in v.lower())
+    if icon_link and icon_link.has_attr("href"):
+        favicon_url = urljoin(url, icon_link["href"])
+
     for a in soup.find_all("a", href=True):
         title = a.get_text(strip=True)
         link = a["href"]
@@ -185,6 +192,7 @@ def scrape_articles(url: str, html: str, keywords: list[str], country_name: str)
                 "guid": {"isPermaLink": True, "value": link},
                 "dc:creator": "scraper",
                 "pubDate": pub_time,
+                "thumbnails": favicon_url, 
             }
         )
 

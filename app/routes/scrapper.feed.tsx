@@ -61,37 +61,58 @@ export default function FeedPage() {
             </div>
 
            {/* Articles */}
+{/* Articles */}
 <div className="space-y-4">
   {parsedContent.channel.items.length > 0 ? (
     parsedContent.channel.items.map((item: any, idx: number) => (
       <div
         key={idx}
-        className="p-3 border rounded hover:bg-gray-800"
+        className="flex items-start space-x-3 p-3 border rounded hover:bg-gray-800"
       >
-        <h4 className="font-semibold">{item.title}</h4>
-
-        {/* For DAILY_SUMMARY, show description as Markdown text */}
-        {feed.feed_type === "DAILY_SUMMARY" ? (
-          <div className="prose prose-sm max-w-none text-gray-200">
-            <pre className="whitespace-pre-wrap text-sm">
-              {item.description}
-            </pre>
-          </div>
+        {/* Thumbnail/Profile Image */}
+        {item.thumbnails ? (
+          <img
+            src={item.thumbnails}
+            alt={item["dc:creator"] || "avatar"}
+            className="w-12 h-12 rounded-full object-cover"
+          />
         ) : (
-          <>
-            <p className="text-sm text-gray-600">{item.pubDate}</p>
-            {item.link && (
-              <a
-                href={item.link}
-                target="_blank"
-                rel="noreferrer"
-                className="text-blue-500 underline"
-              >
-                {item.link}
-              </a>
-            )}
-          </>
+          <div className="w-12 h-12 rounded-full bg-gray-400 flex items-center justify-center text-white">
+            {item["dc:creator"]?.[0]?.toUpperCase() || "?"}
+          </div>
         )}
+
+        {/* Content */}
+        <div className="flex-1">
+          <h4 className="font-semibold text-gray-100">{item.title}</h4>
+
+          {feed.feed_type === "DAILY_SUMMARY" ? (
+            <div className="prose prose-sm max-w-none text-gray-200">
+              <pre className="whitespace-pre-wrap text-sm">
+                {item.description}
+              </pre>
+            </div>
+          ) : (
+            <>
+              <p className="text-sm text-gray-400">@{item["dc:creator"]} {item.pubDate} </p>
+              {item.description && (
+                <p className="text-sm text-gray-200 mt-1">
+                  {item.description}
+                </p>
+              )}
+              {item.link && (
+                <a
+                  href={item.link}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-blue-400 underline text-sm"
+                >
+                  View Tweet
+                </a>
+              )}
+            </>
+          )}
+        </div>
       </div>
     ))
   ) : (
@@ -108,6 +129,7 @@ export default function FeedPage() {
     </div>
   )}
 </div>
+
 
 
             

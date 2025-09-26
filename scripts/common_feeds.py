@@ -155,7 +155,7 @@ async def get_tweets(db: Prisma, username: str, feed_type: str, limit: int = 10,
                     "isPermaLink": True,
                     "value": f"https://twitter.com/{author_username}/status/{t['id']}"
                 },
-                "dc:creator": author_username,  # real author, not the searched handle
+                "dc:creator": f"@{author_username}" if author_username else "",  # real author, not the searched handle
                 "pubDate": pub_date,
                 "images": [
                     media_map[m]

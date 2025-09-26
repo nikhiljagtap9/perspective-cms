@@ -94,7 +94,7 @@ export default function FeedPage() {
             </div>
           ) : (
             <>
-              <p className="text-sm text-gray-400">@{item["dc:creator"]} {item.pubDate} </p>
+              <p className="text-sm text-gray-400">{item["dc:creator"]} {item.pubDate} </p>
               {item.description && (
                 <p className="text-sm text-gray-200 mt-1">
                   {item.description}

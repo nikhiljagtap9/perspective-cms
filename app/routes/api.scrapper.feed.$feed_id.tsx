@@ -212,8 +212,11 @@ function jsonToXml(content: any): string {
       xml += `      <pubDate>${item.pubDate}</pubDate>\n`; // safe
     }
     // Add support for thumbnails
-    if (item.thumbnails) {
-      xml += `      <media:thumbnails url="${escapeXml(item.thumbnails)}" />\n`;
+   if (item.thumbnails) {
+      const thumbs = Array.isArray(item.thumbnails) ? item.thumbnails : [item.thumbnails];
+      for (const thumb of thumbs) {
+        xml += `      <media:thumbnails>${escapeXml(thumb)}</media:thumbnails>\n`;
+      }
     }
     if (item["media:content"]) {
       xml += `      <media:content url="${escapeXml(item["media:content"].url)}" />\n`;

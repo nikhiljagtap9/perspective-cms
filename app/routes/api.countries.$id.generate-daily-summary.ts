@@ -1,30 +1,10 @@
 import { json } from "@remix-run/node";
-import { spawn } from "node:child_process";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 
-// ✅ loader for GET requests (Postman GET will now work)
-export async function loader({ params }: { params: { id?: string } }) {
-  const countryId = params.id; 
+const execFileAsync = promisify(execFile);
 
-  if (!countryId) {
-    return json({ error: "Missing countryId" }, { status: 400 });
-  }
-
-  return runPython(countryId);
-}
-
-// ✅ action for POST requests
-export async function action({ params }: { params: { id?: string } }) {
-  const countryId = params.id;
-
-  if (!countryId) {
-    return new Response("Missing countryId", { status: 400 });
-  }
-
-  return runPython(countryId);
-}
-
-// 🔧 shared function to call your Python script
-// helper to escape XML
+// escape XML special chars
 function escapeXml(unsafe: string = ""): string {
   return unsafe
     .replace(/&/g, "&amp;")
@@ -34,9 +14,9 @@ function escapeXml(unsafe: string = ""): string {
     .replace(/'/g, "&apos;");
 }
 
+// convert Python JSON output → RSS XML
 function jsonToXml(content: any): string {
   const channel = content.channel;
-
   let xml = `<?xml version="1.0" encoding="utf-8"?>\n`;
   xml += `<rss version="2.0"\n`;
   xml += `     xmlns:dc="http://purl.org/dc/elements/1.1/"\n`;
@@ -68,43 +48,31 @@ function jsonToXml(content: any): string {
   return xml;
 }
 
-export async function runPython(countryId: string) {
-  const scriptPath = "./scripts/daily_summary_single.py";
+export async function loader({ params }: { params: { id: string } }) {
+  const countryId = params.id;
+  if (!countryId) {
+    return new Response("Missing countryId", { status: 400 });
+  }
 
   try {
-    const result = await new Promise<string>((resolve, reject) => {
-      const proc = spawn("./venv/bin/python", [scriptPath, "--id", String(countryId)], {
-        cwd: process.cwd(),
-      });
+    // run Python script and capture stdout
+    const { stdout } = await execFileAsync("./venv/bin/python", [
+      "./scripts/daily_summary_single.py",
+      "--id",
+      countryId,
+    ]);
 
-      let stdout = "";
-      let stderr = "";
-
-      proc.stdout.on("data", (data) => {
-        stdout += data.toString();
-      });
-
-      proc.stderr.on("data", (data) => {
-        stderr += data.toString();
-      });
-
-      proc.on("close", (code) => {
-        if (code === 0) {
-          resolve(stdout.trim());
-        } else {
-          reject(new Error(stderr || `Process exited with code ${code}`));
-        }
-      });
-    });
-
-    // ✅ Parse JSON output from Python and convert to XML
-    const parsed = JSON.parse(result);
+    const parsed = JSON.parse(stdout.trim());
     const xml = jsonToXml(parsed);
 
     return new Response(xml, {
       headers: { "Content-Type": "application/xml" },
     });
   } catch (error: any) {
-    return json({ error: error.message || "Failed to generate summary" }, { status: 500 });
+    console.error("Daily summary error:", error);
+    return json(
+      { error: error.message || "Failed to generate summary" },
+      { status: 500 }
+    );
   }
 }

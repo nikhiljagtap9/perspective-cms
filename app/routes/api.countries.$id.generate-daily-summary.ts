@@ -1,5 +1,5 @@
 import { json } from "@remix-run/node";
-import { spawn } from "child_process";
+import { spawn } from "node:child_process";
 
 // ✅ loader for GET requests (Postman GET will now work)
 export async function loader({ params }: { params: { id?: string } }) {

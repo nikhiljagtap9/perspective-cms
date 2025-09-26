@@ -115,7 +115,12 @@ async def get_tweets(db: Prisma, username: str, feed_type: str, limit: int = 10,
             if m["type"] == "photo" and "url" in m:
                 media_map[m["media_key"]] = m["url"]
             elif m["type"] in ("video", "animated_gif") and "preview_image_url" in m:
-                media_map[m["media_key"]] = m["preview_image_url"]
+                #    media_map[m["media_key"]] = m["preview_image_url"]
+                thumb = m["preview_image_url"]
+                # try to upgrade quality if possible
+                if "?name=" not in thumb:
+                    thumb = thumb + "?name=orig"
+                media_map[m["media_key"]] = thumb
 
         # 🔹 Map user profiles (author_id → username + profile image)
         user_map = {}

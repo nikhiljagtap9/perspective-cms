@@ -3,14 +3,14 @@ from prisma import Prisma
 from common_feeds import get_tweets, save_feed_log, API_HITS
 
 TARGET_COUNTRIES = [
-    # "India", 
-    # "China", 
-     "Saudi Arabia", 
-    # "Cameroon", 
-    # "Israel", 
-    # "Qatar", 
-    # "Belarus", 
-    # "Iraq"
+    "India", 
+    "China", 
+    "Saudi Arabia", 
+    "Cameroon", 
+    "Israel", 
+    "Qatar", 
+    "Belarus", 
+    "Iraq"
     ]
 FEED_TYPE = "AMBASSADOR_MENTION"
 

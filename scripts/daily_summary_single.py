@@ -135,6 +135,10 @@ async def save_pdf_report(feed_id: str, country_name: str, summary: str):
         os.makedirs(REPORTS_DIR, exist_ok=True)
         file_path = os.path.join(REPORTS_DIR, f"report_{country_name}.pdf")
 
+        # ensure old PDF is deleted before writing new one
+        if os.path.exists(file_path):
+            os.remove(file_path)
+
         doc = SimpleDocTemplate(file_path, pagesize=A4)
         styles = getSampleStyleSheet()
         story = []

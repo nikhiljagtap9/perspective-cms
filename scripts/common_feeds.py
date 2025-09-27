@@ -35,7 +35,7 @@ async def save_feed_log(db: Prisma, feed_type: str, url: str, data: dict, status
 # Get Tweets (with rate limit handling)
 # ----------------------------
 
-async def get_tweets(db: Prisma, username: str, feed_type: str, limit: int = 10, mode: str = "self"):
+async def get_tweets(db: Prisma, username: str, feed_type: str, limit: int = 100, mode: str = "self"):
     global API_HITS
 
     # Skip if handle is empty or not a string

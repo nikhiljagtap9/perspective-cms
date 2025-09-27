@@ -153,7 +153,7 @@ async def get_tweets(db: Prisma, username: str, feed_type: str, limit: int = 10,
                     break
 
             tweets_data.append({
-                "title": user_info.get("name", author_username).title(),
+                "title": user_info.get("name", author_username),
                 "description": t["text"],
                 "link": f"https://twitter.com/{author_username}/status/{t['id']}",  # correct author
                 "guid": {

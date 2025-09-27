@@ -17,7 +17,7 @@ FEED_TYPE = "AMBASSADOR_MENTION"
 async def scrape_country_handles(db, country, handles):
     all_tweets = []
     for handle in handles:
-        tweets = await get_tweets(db, handle, FEED_TYPE, 10, mode="about")
+        tweets = await get_tweets(db, handle, FEED_TYPE, 100, mode="about")
         # all_tweets.extend(tweets)
         if tweets:  # only extend if not empty
             all_tweets.extend(tweets)

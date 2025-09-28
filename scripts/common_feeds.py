@@ -5,6 +5,7 @@ import datetime
 import json
 from dotenv import load_dotenv
 from prisma import Prisma
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
 # ----------------------------
 # Config
@@ -34,6 +35,9 @@ async def save_feed_log(db: Prisma, feed_type: str, url: str, data: dict, status
 # ----------------------------
 # Get Tweets (with rate limit handling)
 # ----------------------------
+
+# Initialize once (global)
+analyzer = SentimentIntensityAnalyzer()
 
 async def get_tweets(db: Prisma, username: str, feed_type: str, limit: int = 10, mode: str = "self"):
     global API_HITS
@@ -152,6 +156,16 @@ async def get_tweets(db: Prisma, username: str, feed_type: str, limit: int = 10,
                     thumbnail_url = media_map[mk]
                     break
 
+            # 🔹 Sentiment Analysis
+            sentiment_scores = analyzer.polarity_scores(t["text"])
+            compound = sentiment_scores["compound"]
+            if compound >= 0.05:
+                sentiment = "positive"
+            elif compound <= -0.05:
+                sentiment = "negative"
+            else:
+                sentiment = "neutral"        
+
             tweets_data.append({
                 "title": user_info.get("name", author_username),
                 "description": t["text"],
@@ -167,6 +181,7 @@ async def get_tweets(db: Prisma, username: str, feed_type: str, limit: int = 10,
                     for m in t.get("attachments", {}).get("media_keys", [])
                     if m in media_map
                 ],
+                "sentiment": sentiment,
                 "thumbnails": profile_photo,  # avatar
                 "thumbnail_url": thumbnail_url  # main media
             })

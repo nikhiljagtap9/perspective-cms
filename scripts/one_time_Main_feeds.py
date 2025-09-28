@@ -42,7 +42,11 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
-    handlers=[logging.FileHandler("scraper.log"), logging.StreamHandler(sys.stdout)],
+#   handlers=[logging.FileHandler("scraper.log"), logging.StreamHandler(sys.stdout)],
+    handlers=[
+        logging.FileHandler("scraper.log", mode="w", encoding="utf-8"),  # 🔹 overwrite each run
+        logging.StreamHandler(sys.stdout),
+    ],
 )
 
 # ----------------------------

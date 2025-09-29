@@ -93,311 +93,63 @@ async def fetch_page(url: str, saved_etag: str = None, saved_lastmod: str = None
 # ----------------------------
 # Scrape Articles
 # ----------------------------
-
 # def scrape_articles(url: str, html: str, keywords: list[str], country_name: str):
 #     articles = []
-#     seen_links = set()   # track duplicates
 #     soup = BeautifulSoup(html, "html.parser")
-
-#     # 🔹 Find site favicon/logo once per page
-#     favicon_url = ''
-#     icon_link = soup.find("link", rel=lambda v: v and "icon" in v.lower())
-#     if icon_link and icon_link.has_attr("href"):
-#         favicon_url = urljoin(url, icon_link["href"])
-
-#     parsed_domain = urlparse(url).netloc  # extract domain (e.g., "www.thehindu.com")    
 
 #     for a in soup.find_all("a", href=True):
 #         title = a.get_text(strip=True)
-#         link = a["href"]
 
+#         # Skip if no usable title
 #         if not title or len(title.split()) <= 3:
+#             continue
+
+#         link = a["href"].strip()
+#         if not link:
 #             continue
 #         if not link.startswith("http"):
 #             link = url.rstrip("/") + "/" + link.lstrip("/")
 
-#         # skip duplicates
-#         if link in seen_links:
+#         # ✅ Match only against title text
+#         #
+#         #
+#         #
+#         title_lower = title.lower()
+#         if not (
+#             any(word.lower() in title_lower for word in keywords)
+#             or country_name.lower() in title_lower
+#         ):
 #             continue
-#         seen_links.add(link)    
 
-#         # --- Collect context ---
-#         context_parts = [title]
-#         thumbnail_url = ''  # initialize empty for per-article image
-
-#         parent = a.find_parent()
-#         if parent:
-#             # Add surrounding <p> texts
-#             for p in parent.find_all("p", limit=3):
-#                 text = p.get_text(strip=True)
-#                 if text:
-#                     context_parts.append(text)
-
-#             # Add image alt text + pick article image
-#             img = parent.find("img")
-#             if img:
-#                 if img.has_attr("alt") and img["alt"].strip():
-#                     context_parts.append(img["alt"].strip())
-#                 if img.has_attr("src") and img["src"].strip():
-#                     thumbnail_url = urljoin(url, img["src"].strip())
-
-#         # Combine context
-#         full_context = " ".join(context_parts).lower()
-
-#         # --- Match keywords against title OR surrounding context ---
-#         if not any(word.lower() in full_context for word in keywords):
-#             continue
+#         # if not any(word.lower() in title.lower() for word in keywords):
+#         #     continue
 
 #         pub_time = datetime.now().strftime("%a, %d %b %Y %H:%M:%S GMT")
-
 #         articles.append(
 #             {
-#                 "title": title,
-#                 "description": " ".join(context_parts)[:500],  # context used as description
+#                 "title": title or "Untitled",
+#                 "description": title,   # same as title
 #                 "link": link,
 #                 "guid": {"isPermaLink": True, "value": link},
-#                 "dc:creator": parsed_domain,
+#                 "dc:creator": "scraper",
 #                 "pubDate": pub_time,
-#                 "thumbnails": favicon_url, 
-#                 "thumbnail_url": thumbnail_url,
 #             }
 #         )
 
 #     return articles
 
-import sys
-import json
-import asyncio
-import logging
-import traceback
-import random
-from datetime import datetime
-
-import httpx
-from bs4 import BeautifulSoup
-from prisma import Prisma
-from tqdm.asyncio import tqdm_asyncio
-from urllib.parse import urljoin, urlparse
-
-# ----------------------------
-# User Agents
-# ----------------------------
-USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/117.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-    "AppleWebKit/605.1.15 (KHTML, like Gecko) "
-    "Chrome/116.0 Safari/605.1.15",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:116.0) "
-    "Gecko/20100101 Firefox/116.0",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/117.0 Safari/537.36 Edg/117.0",
-    "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) "
-    "AppleWebKit/605.1.15 (KHTML, like Gecko) "
-    "Version/16.0 Mobile/15E148 Safari/604.1",
-    "Mozilla/5.0 (Linux; Android 13; Pixel 6 Pro) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/117.0 Mobile Safari/537.36",
-]
-
-# ----------------------------
-# Logging
-# ----------------------------
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-#   handlers=[logging.FileHandler("scraper.log"), logging.StreamHandler(sys.stdout)],
-    handlers=[
-        logging.FileHandler("scraper.log", mode="w", encoding="utf-8"),  # 🔹 overwrite each run
-        logging.StreamHandler(sys.stdout),
-    ],
-)
-
-# ----------------------------
-# Concurrency
-# ----------------------------
-MAX_COUNTRY_CONCURRENCY = 5
-MAX_URL_CONCURRENCY = 20
-
-country_semaphore = asyncio.Semaphore(MAX_COUNTRY_CONCURRENCY)
-url_semaphore = asyncio.Semaphore(MAX_URL_CONCURRENCY)
-
-# ----------------------------
-# HTTP Client
-# ----------------------------
-client = httpx.AsyncClient(
-    timeout=8, follow_redirects=True, headers={"User-Agent": random.choice(USER_AGENTS)}
-)
-
-
-# ----------------------------
-# Fetch Page
-# ----------------------------
-async def fetch_page(url: str, saved_etag: str = None, saved_lastmod: str = None):
-    headers = {}
-    if saved_etag:
-        headers["If-None-Match"] = saved_etag
-    if saved_lastmod:
-        headers["If-Modified-Since"] = saved_lastmod
-
-    try:
-        r = await client.get(url, headers=headers)
-        if r.status_code == 304:
-            logging.info(f"[SKIP] {url} → Not Modified (304)")
-            return None, "not_modified", None, None
-        if r.status_code != 200:
-            logging.error(f"[HTTP ERROR] {url} → {r.status_code} {r.reason_phrase}")
-        r.raise_for_status()
-        return r.text, None, r.headers.get("ETag"), r.headers.get("Last-Modified")
-    except Exception as e:
-        logging.error(f"[REQUEST FAILED] {url} → {e}")
-        return None, str(e), None, None
-
-
-# ----------------------------
-# Scrape Articles
-# ----------------------------
-
-# def scrape_articles(url: str, html: str, keywords: list[str], country_name: str):
-#     articles = []
-#     seen_links = set()   # track duplicates
-#     soup = BeautifulSoup(html, "html.parser")
-
-#     # 🔹 Find site favicon/logo once per page
-#     favicon_url = ''
-#     icon_link = soup.find("link", rel=lambda v: v and "icon" in v.lower())
-#     if icon_link and icon_link.has_attr("href"):
-#         favicon_url = urljoin(url, icon_link["href"])
-
-#     parsed_domain = urlparse(url).netloc  # extract domain (e.g., "www.thehindu.com")    
-
-#     for a in soup.find_all("a", href=True):
-#         title = a.get_text(strip=True)
-#         link = a["href"]
-
-#         if not title or len(title.split()) <= 3:
-#             continue
-#         if not link.startswith("http"):
-#             link = url.rstrip("/") + "/" + link.lstrip("/")
-
-#         # skip duplicates
-#         if link in seen_links:
-#             continue
-#         seen_links.add(link)    
-
-#         # --- Collect context ---
-#         context_parts = [title]
-#         thumbnail_url = ''  # initialize empty for per-article image
-
-#         parent = a.find_parent()
-#         if parent:
-#             # Add surrounding <p> texts
-#             for p in parent.find_all("p", limit=3):
-#                 text = p.get_text(strip=True)
-#                 if text:
-#                     context_parts.append(text)
-
-#             # Add image alt text + pick article image
-#             img = parent.find("img")
-#             if img:
-#                 if img.has_attr("alt") and img["alt"].strip():
-#                     context_parts.append(img["alt"].strip())
-#                 if img.has_attr("src") and img["src"].strip():
-#                     thumbnail_url = urljoin(url, img["src"].strip())
-
-#         # Combine context
-#         full_context = " ".join(context_parts).lower()
-
-#         # --- Match keywords against title OR surrounding context ---
-#         if not any(word.lower() in full_context for word in keywords):
-#             continue
-
-#         pub_time = datetime.now().strftime("%a, %d %b %Y %H:%M:%S GMT")
-
-#         articles.append(
-#             {
-#                 "title": title,
-#                 "description": " ".join(context_parts)[:500],  # context used as description
-#                 "link": link,
-#                 "guid": {"isPermaLink": True, "value": link},
-#                 "dc:creator": parsed_domain,
-#                 "pubDate": pub_time,
-#                 "thumbnails": favicon_url, 
-#                 "thumbnail_url": thumbnail_url,
-#             }
-#         )
-
-#     return articles
-
-def clean_image_url(img_url: str) -> str:
-    """
-    Normalize Cloudinary-style image URLs:
-    - Keep only last `w_XXX` (width) and the image ID.
-    - Example:
-      https://images.jpost.com/image/upload/c_fill,g_faces:center,h_448,w_632/682681
-      → https://images.jpost.com/image/upload/w_632/682681
-    """
-    if not img_url:
-        return ""
-
-    try:
-        parsed = urlparse(img_url)
-        path_parts = parsed.path.split("/")
-
-        if "upload" in path_parts:
-            idx = path_parts.index("upload")
-            after_upload = path_parts[idx + 1 :]
-
-            if len(after_upload) >= 2:
-                transforms = ",".join(after_upload[:-1])
-                image_id = after_upload[-1]
-
-                # find last width transform w_XXX
-                width_transform = None
-                for part in transforms.split(","):
-                    if part.strip().startswith("w_"):
-                        width_transform = part.strip()
-
-                if width_transform:
-                    return f"{parsed.scheme}://{parsed.netloc}/image/upload/{width_transform}/{image_id}"
-
-        # fallback for normal jpg/png urls
-        return img_url
-    except Exception:
-        return img_url
-
-async def get_og_image(article_url: str) -> str:
-    """Fetch og:image from an article page (if available)."""
-    try:
-        r = await client.get(article_url, timeout=8)
-        if r.status_code == 200:
-            soup = BeautifulSoup(r.text, "html.parser")
-            og_tag = soup.find("meta", property="og:image")
-            if og_tag and og_tag.get("content"):
-                raw_url = urljoin(article_url, og_tag["content"].strip())
-                return clean_image_url(raw_url)   # ✅ clean before returning
-    except Exception:
-        return ""
-    return ""
-
-
-async def scrape_articles(url: str, html: str, keywords: list[str], country_name: str):
+def scrape_articles(url: str, html: str, keywords: list[str], country_name: str):
     articles = []
-    seen_links = set()
+    seen_links = set()   # track duplicates
     soup = BeautifulSoup(html, "html.parser")
 
-    favicon_url = ""
+    # 🔹 Find site favicon/logo once per page
+    favicon_url = ''
     icon_link = soup.find("link", rel=lambda v: v and "icon" in v.lower())
     if icon_link and icon_link.has_attr("href"):
         favicon_url = urljoin(url, icon_link["href"])
 
-    parsed_domain = urlparse(url).netloc
-
-    tasks = []   # collect OG image fetch tasks
-    temp_articles = []  # store article data until we attach thumbnails
+    parsed_domain = urlparse(url).netloc  # extract domain (e.g., "www.thehindu.com")    
 
     for a in soup.find_all("a", href=True):
         title = a.get_text(strip=True)
@@ -408,55 +160,55 @@ async def scrape_articles(url: str, html: str, keywords: list[str], country_name
         if not link.startswith("http"):
             link = url.rstrip("/") + "/" + link.lstrip("/")
 
+        # skip duplicates
         if link in seen_links:
             continue
-        seen_links.add(link)
+        seen_links.add(link)    
 
+        # --- Collect context ---
         context_parts = [title]
+        thumbnail_url = ''  # initialize empty for per-article image
 
         parent = a.find_parent()
         if parent:
+            # Add surrounding <p> texts
             for p in parent.find_all("p", limit=3):
                 text = p.get_text(strip=True)
                 if text:
                     context_parts.append(text)
 
+            # Add image alt text + pick article image
             img = parent.find("img")
             if img:
                 if img.has_attr("alt") and img["alt"].strip():
                     context_parts.append(img["alt"].strip())
+                if img.has_attr("src") and img["src"].strip():
+                    thumbnail_url = urljoin(url, img["src"].strip())
 
+        # Combine context
         full_context = " ".join(context_parts).lower()
+
+        # --- Match keywords against title OR surrounding context ---
         if not any(word.lower() in full_context for word in keywords):
             continue
 
         pub_time = datetime.now().strftime("%a, %d %b %Y %H:%M:%S GMT")
 
-        # Create article with empty thumbnail_url for now
-        article = {
-            "title": title,
-            "description": " ".join(context_parts)[:500],
-            "link": link,
-            "guid": {"isPermaLink": True, "value": link},
-            "dc:creator": parsed_domain,
-            "pubDate": pub_time,
-            "thumbnails": favicon_url,
-            "thumbnail_url": "",  # will fill with OG image
-        }
-
-        temp_articles.append(article)
-        tasks.append(get_og_image(link))
-
-    # 🔹 Fetch all OG images concurrently
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-
-    # Attach results back to articles
-    for article, og_img in zip(temp_articles, results):
-        if isinstance(og_img, str) and og_img:
-            article["thumbnail_url"] = clean_image_url(og_img)
-        articles.append(article)
+        articles.append(
+            {
+                "title": title,
+                "description": " ".join(context_parts)[:500],  # context used as description
+                "link": link,
+                "guid": {"isPermaLink": True, "value": link},
+                "dc:creator": parsed_domain,
+                "pubDate": pub_time,
+                "thumbnails": favicon_url, 
+                "thumbnail_url": thumbnail_url,
+            }
+        )
 
     return articles
+
 
 # ----------------------------
 # Scrape Single URL
@@ -565,7 +317,7 @@ async def scrape_country(db: Prisma, country, sources_by_country, keywords_by_co
 
             html, error_reason, _, _ = result
             if html:
-                articles = await scrape_articles(url, html, keywords, country.name)
+                articles = scrape_articles(url, html, keywords, country.name)
                 all_articles.extend(articles)
 
         # build one combined feed JSON
@@ -642,4 +394,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-

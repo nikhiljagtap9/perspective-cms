@@ -2,7 +2,6 @@ import sys
 import json
 import asyncio
 import logging
-import traceback
 import random
 from datetime import datetime
 
@@ -11,6 +10,20 @@ from bs4 import BeautifulSoup
 from prisma import Prisma
 from tqdm.asyncio import tqdm_asyncio
 from urllib.parse import urljoin, urlparse
+import openpyxl   # ✅ Excel support
+
+# ----------------------------
+# Excel Setup
+# ----------------------------
+wb = openpyxl.Workbook()
+ws = wb.active
+ws.title = "Scraper Logs"
+ws.append(["Country", "Source", "Status", "ErrorMessage"])  # header row
+
+def save_excel():
+    filename = f"scraper_logs_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    wb.save(filename)
+    print(f"✅ Excel file saved: {filename}")
 
 # ----------------------------
 # User Agents
@@ -38,35 +51,17 @@ USER_AGENTS = [
 # ----------------------------
 # Logging
 # ----------------------------
-# logging.basicConfig(
-#     level=logging.INFO,
-#     format="%(asctime)s [%(levelname)s] %(message)s",
-#     datefmt="%Y-%m-%d %H:%M:%S",
-#     handlers=[
-#         logging.FileHandler("scraper.log", mode="w", encoding="utf-8"),  # 🔹 overwrite each run
-#         logging.StreamHandler(sys.stdout),
-#     ],
-# )
-
 logger = logging.getLogger("scraper")
 logger.setLevel(logging.INFO)
 
-# Console → INFO and above
 console_handler = logging.StreamHandler(sys.stdout)
 console_handler.setLevel(logging.INFO)
-console_format = logging.Formatter(
-    "%(asctime)s [%(levelname)s] %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S"
-)
+console_format = logging.Formatter("[%(levelname)s] %(message)s")
 console_handler.setFormatter(console_format)
 
-# File → only WARNING/ERROR
 file_handler = logging.FileHandler("scraper.log", mode="w", encoding="utf-8")
-file_handler.setLevel(logging.WARNING)
-file_format = logging.Formatter(
-    "%(asctime)s [%(levelname)s] %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S"
-)
+file_handler.setLevel(logging.ERROR)
+file_format = logging.Formatter("[%(levelname)s] %(message)s")
 file_handler.setFormatter(file_format)
 
 logger.addHandler(console_handler)
@@ -88,7 +83,6 @@ client = httpx.AsyncClient(
     timeout=8, follow_redirects=True, headers={"User-Agent": random.choice(USER_AGENTS)}
 )
 
-
 # ----------------------------
 # Fetch Page
 # ----------------------------
@@ -102,77 +96,27 @@ async def fetch_page(url: str, country_name: str, saved_etag: str = None, saved_
     try:
         r = await client.get(url, headers=headers)
         if r.status_code == 304:
-            logging.info(f"[{country_name}] [SKIP] {url} → Not Modified (304)")
             return None, "not_modified", None, None
         if r.status_code != 200:
-            logging.error(f"[{country_name}] [HTTP ERROR] {url} → {r.status_code} {r.reason_phrase}")
-        r.raise_for_status()
+            return None, f"{r.status_code} {r.reason_phrase}", None, None
         return r.text, None, r.headers.get("ETag"), r.headers.get("Last-Modified")
     except Exception as e:
-        logging.error(f"[{country_name}] [REQUEST FAILED] {url} → {e}")
         return None, str(e), None, None
-
 
 # ----------------------------
 # Scrape Articles
 # ----------------------------
-# def scrape_articles(url: str, html: str, keywords: list[str], country_name: str):
-#     articles = []
-#     soup = BeautifulSoup(html, "html.parser")
-
-#     for a in soup.find_all("a", href=True):
-#         title = a.get_text(strip=True)
-
-#         # Skip if no usable title
-#         if not title or len(title.split()) <= 3:
-#             continue
-
-#         link = a["href"].strip()
-#         if not link:
-#             continue
-#         if not link.startswith("http"):
-#             link = url.rstrip("/") + "/" + link.lstrip("/")
-
-#         # ✅ Match only against title text
-#         #
-#         #
-#         #
-#         title_lower = title.lower()
-#         if not (
-#             any(word.lower() in title_lower for word in keywords)
-#             or country_name.lower() in title_lower
-#         ):
-#             continue
-
-#         # if not any(word.lower() in title.lower() for word in keywords):
-#         #     continue
-
-#         pub_time = datetime.now().strftime("%a, %d %b %Y %H:%M:%S GMT")
-#         articles.append(
-#             {
-#                 "title": title or "Untitled",
-#                 "description": title,   # same as title
-#                 "link": link,
-#                 "guid": {"isPermaLink": True, "value": link},
-#                 "dc:creator": "scraper",
-#                 "pubDate": pub_time,
-#             }
-#         )
-
-#     return articles
-
 def scrape_articles(url: str, html: str, keywords: list[str], country_name: str):
     articles = []
-    seen_links = set()   # track duplicates
+    seen_links = set()
     soup = BeautifulSoup(html, "html.parser")
 
-    # 🔹 Find site favicon/logo once per page
-    favicon_url = ''
+    favicon_url = ""
     icon_link = soup.find("link", rel=lambda v: v and "icon" in v.lower())
     if icon_link and icon_link.has_attr("href"):
         favicon_url = urljoin(url, icon_link["href"])
 
-    parsed_domain = urlparse(url).netloc  # extract domain (e.g., "www.thehindu.com")    
+    parsed_domain = urlparse(url).netloc
 
     for a in soup.find_all("a", href=True):
         title = a.get_text(strip=True)
@@ -183,24 +127,20 @@ def scrape_articles(url: str, html: str, keywords: list[str], country_name: str)
         if not link.startswith("http"):
             link = url.rstrip("/") + "/" + link.lstrip("/")
 
-        # skip duplicates
         if link in seen_links:
             continue
-        seen_links.add(link)    
+        seen_links.add(link)
 
-        # --- Collect context ---
         context_parts = [title]
-        thumbnail_url = ''  # initialize empty for per-article image
+        thumbnail_url = ""
 
         parent = a.find_parent()
         if parent:
-            # Add surrounding <p> texts
             for p in parent.find_all("p", limit=3):
                 text = p.get_text(strip=True)
                 if text:
                     context_parts.append(text)
 
-            # Add image alt text + pick article image
             img = parent.find("img")
             if img:
                 if img.has_attr("alt") and img["alt"].strip():
@@ -208,10 +148,8 @@ def scrape_articles(url: str, html: str, keywords: list[str], country_name: str)
                 if img.has_attr("src") and img["src"].strip():
                     thumbnail_url = urljoin(url, img["src"].strip())
 
-        # Combine context
         full_context = " ".join(context_parts).lower()
 
-        # --- Match keywords against title OR surrounding context ---
         if not any(word.lower() in full_context for word in keywords):
             continue
 
@@ -220,21 +158,20 @@ def scrape_articles(url: str, html: str, keywords: list[str], country_name: str)
         articles.append(
             {
                 "title": title,
-                "description": " ".join(context_parts)[:500],  # context used as description
+                "description": " ".join(context_parts)[:500],
                 "link": link,
                 "guid": {"isPermaLink": True, "value": link},
                 "dc:creator": parsed_domain,
                 "pubDate": pub_time,
-                "thumbnails": favicon_url, 
+                "thumbnails": favicon_url,
                 "thumbnail_url": thumbnail_url,
             }
         )
 
     return articles
 
-
 # ----------------------------
-# Scrape Single URL
+# Scrape Single Country
 # ----------------------------
 async def scrape_country(db: Prisma, country, sources_by_country, keywords_by_country):
     async with country_semaphore:
@@ -242,122 +179,36 @@ async def scrape_country(db: Prisma, country, sources_by_country, keywords_by_co
         keywords = keywords_by_country.get(country.id, [])
 
         if not urls or not keywords:
+            logger.error(f"[{country.name}] Sources={urls} Status=empty")
+            ws.append([country.name, "N/A", "EMPTY", "No sources/keywords"])  # ✅ Excel
             return 0
 
         all_articles = []
-        site_logo = None
-
-        # scrape each URL and merge articles
         tasks = [fetch_page(url, country.name) for url in urls]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         for i, result in enumerate(results):
             url = urls[i]
             if isinstance(result, Exception):
-                logging.error(f"[{country.name}] {url} failed: {result}")
+                logger.error(f"[{country.name}] Source={url} Status=error → {result}")
+                ws.append([country.name, url, "ERROR", str(result)])  # ✅ Excel
                 continue
 
             html, error_reason, _, _ = result
             if error_reason:
-                logging.error(f"[{country.name}] ERROR from {url}: {error_reason}")
-                continue
-
-            if html:
-                articles, logo = scrape_articles(url, html, keywords, country.name)
-                all_articles.extend(articles)
-                if logo and not site_logo:
-                    site_logo = logo
-
-        # build one combined feed JSON
-        status = "success" if all_articles else "empty"
-        rss_json = {
-            "channel": {
-                "title": "Main Feed",
-                "description": f"Scraped articles for {country.name}",
-                "link": None,
-                "items": all_articles,
-                "meta": {
-                    "status": status,
-                    "article_count": len(all_articles),
-                },
-            }
-        }
-
-        if site_logo:
-            rss_json["channel"]["image"] = {
-                "url": site_logo,
-                "title": f"{country.name} Feed",
-                "link": urls[0] if urls else None,
-            }
-
-        # save/update one row per country + feed_type
-        saved_row = await db.scrapperdata.find_unique(
-            where={"country_id_feed_type": {"country_id": country.id, "feed_type": "MAIN_FEED"}}
-        )
-
-        if saved_row:
-            await db.scrapperdata.update(
-                where={"id": saved_row.id},
-                data={
-                    "content": json.dumps(rss_json, ensure_ascii=False),
-                    "updated_at": datetime.now(),
-                },
-            )
-        else:
-            await db.scrapperdata.create(
-                data={
-                    "country_id": country.id,
-                    "feed_type": "MAIN_FEED",
-                    "content": json.dumps(rss_json, ensure_ascii=False),
-                }
-            )
-
-        return len(all_articles)
-
-
-# ----------------------------
-# Scrape all sources for a country
-# ----------------------------
-async def scrape_country(db: Prisma, country, sources_by_country, keywords_by_country):
-    async with country_semaphore:
-        urls = sources_by_country.get(country.id, [])
-        keywords = keywords_by_country.get(country.id, [])
-
-        if not urls or not keywords:
-            logger.warning(f"[{country.name}] No sources or keywords (status=empty)")
-            return 0
-
-        all_articles = []
-        tasks = [fetch_page(url,country.name) for url in urls]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        for i, result in enumerate(results):
-            url = urls[i]
-            if isinstance(result, Exception):
-                logger.error(
-                    f"[{country.name}] Source={url} Keywords={keywords} "
-                    f"Status=error → {result}"
-                )
-                continue
-
-            html, error_reason, _, _ = result
-            if error_reason:
-                logger.error(
-                    f"[{country.name}] Source={url} Keywords={keywords} "
-                    f"Status=error → {error_reason}"
-                )
+                logger.error(f"[{country.name}] Source={url} Status=error → {error_reason}")
+                ws.append([country.name, url, "ERROR", error_reason])  # ✅ Excel
                 continue
 
             if html:
                 articles = scrape_articles(url, html, keywords, country.name)
                 all_articles.extend(articles)
 
-        # if no articles at all
         if not all_articles:
-            logger.warning(
-                f"[{country.name}] Sources={urls} Keywords={keywords} Status=empty"
-            )
+            logger.error(f"[{country.name}] Sources={urls} Status=empty")
+            ws.append([country.name, ", ".join(urls), "EMPTY", "No articles found"])  # ✅ Excel
 
+        return len(all_articles)
 
 # ----------------------------
 # Main Runner
@@ -378,18 +229,13 @@ async def main():
     for k in keywords:
         keywords_by_country.setdefault(k.countryId, []).append(k.keyword)
 
-    total = 0
     tasks = [scrape_country(db, country, sources_by_country, keywords_by_country) for country in countries]
-
-    # 🔹 Show progress bar
-    results = await tqdm_asyncio.gather(*tasks, total=len(tasks), desc="Scraping countries")
-
-    total = sum(r for r in results if isinstance(r, int))
-    logging.info(f"SUMMARY: Total {total} articles saved across {len(countries)} countries")
+    await tqdm_asyncio.gather(*tasks, total=len(tasks), desc="Scraping countries")
 
     await db.disconnect()
     await client.aclose()
 
+    save_excel()  # ✅ Save Excel at the end
 
 if __name__ == "__main__":
     asyncio.run(main())

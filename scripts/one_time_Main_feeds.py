@@ -93,63 +93,105 @@ async def fetch_page(url: str, saved_etag: str = None, saved_lastmod: str = None
 # ----------------------------
 # Scrape Articles
 # ----------------------------
+
 # def scrape_articles(url: str, html: str, keywords: list[str], country_name: str):
 #     articles = []
+#     seen_links = set()   # track duplicates
 #     soup = BeautifulSoup(html, "html.parser")
+
+#     # 🔹 Find site favicon/logo once per page
+#     favicon_url = ''
+#     icon_link = soup.find("link", rel=lambda v: v and "icon" in v.lower())
+#     if icon_link and icon_link.has_attr("href"):
+#         favicon_url = urljoin(url, icon_link["href"])
+
+#     parsed_domain = urlparse(url).netloc  # extract domain (e.g., "www.thehindu.com")    
 
 #     for a in soup.find_all("a", href=True):
 #         title = a.get_text(strip=True)
+#         link = a["href"]
 
-#         # Skip if no usable title
 #         if not title or len(title.split()) <= 3:
-#             continue
-
-#         link = a["href"].strip()
-#         if not link:
 #             continue
 #         if not link.startswith("http"):
 #             link = url.rstrip("/") + "/" + link.lstrip("/")
 
-#         # ✅ Match only against title text
-#         #
-#         #
-#         #
-#         title_lower = title.lower()
-#         if not (
-#             any(word.lower() in title_lower for word in keywords)
-#             or country_name.lower() in title_lower
-#         ):
+#         # skip duplicates
+#         if link in seen_links:
+#             continue
+#         seen_links.add(link)    
+
+#         # --- Collect context ---
+#         context_parts = [title]
+#         thumbnail_url = ''  # initialize empty for per-article image
+
+#         parent = a.find_parent()
+#         if parent:
+#             # Add surrounding <p> texts
+#             for p in parent.find_all("p", limit=3):
+#                 text = p.get_text(strip=True)
+#                 if text:
+#                     context_parts.append(text)
+
+#             # Add image alt text + pick article image
+#             img = parent.find("img")
+#             if img:
+#                 if img.has_attr("alt") and img["alt"].strip():
+#                     context_parts.append(img["alt"].strip())
+#                 if img.has_attr("src") and img["src"].strip():
+#                     thumbnail_url = urljoin(url, img["src"].strip())
+
+#         # Combine context
+#         full_context = " ".join(context_parts).lower()
+
+#         # --- Match keywords against title OR surrounding context ---
+#         if not any(word.lower() in full_context for word in keywords):
 #             continue
 
-#         # if not any(word.lower() in title.lower() for word in keywords):
-#         #     continue
-
 #         pub_time = datetime.now().strftime("%a, %d %b %Y %H:%M:%S GMT")
+
 #         articles.append(
 #             {
-#                 "title": title or "Untitled",
-#                 "description": title,   # same as title
+#                 "title": title,
+#                 "description": " ".join(context_parts)[:500],  # context used as description
 #                 "link": link,
 #                 "guid": {"isPermaLink": True, "value": link},
-#                 "dc:creator": "scraper",
+#                 "dc:creator": parsed_domain,
 #                 "pubDate": pub_time,
+#                 "thumbnails": favicon_url, 
+#                 "thumbnail_url": thumbnail_url,
 #             }
 #         )
 
 #     return articles
 
-def scrape_articles(url: str, html: str, keywords: list[str], country_name: str):
+async def get_og_image(article_url: str) -> str:
+    """Fetch og:image from an article page (if available)."""
+    try:
+        r = await client.get(article_url, timeout=8)
+        if r.status_code == 200:
+            soup = BeautifulSoup(r.text, "html.parser")
+            og_tag = soup.find("meta", property="og:image")
+            if og_tag and og_tag.get("content"):
+                return urljoin(article_url, og_tag["content"].strip())
+    except Exception:
+        return ""
+    return ""
+
+async def scrape_articles(url: str, html: str, keywords: list[str], country_name: str):
     articles = []
-    seen_links = set()   # track duplicates
+    seen_links = set()
     soup = BeautifulSoup(html, "html.parser")
 
-    # 🔹 Find site favicon/logo once per page
-    favicon_url = ''
+    favicon_url = ""
     icon_link = soup.find("link", rel=lambda v: v and "icon" in v.lower())
     if icon_link and icon_link.has_attr("href"):
         favicon_url = urljoin(url, icon_link["href"])
 
-    parsed_domain = urlparse(url).netloc  # extract domain (e.g., "www.thehindu.com")    
+    parsed_domain = urlparse(url).netloc
+
+    tasks = []   # collect OG image fetch tasks
+    temp_articles = []  # store article data until we attach thumbnails
 
     for a in soup.find_all("a", href=True):
         title = a.get_text(strip=True)
@@ -160,55 +202,55 @@ def scrape_articles(url: str, html: str, keywords: list[str], country_name: str)
         if not link.startswith("http"):
             link = url.rstrip("/") + "/" + link.lstrip("/")
 
-        # skip duplicates
         if link in seen_links:
             continue
-        seen_links.add(link)    
+        seen_links.add(link)
 
-        # --- Collect context ---
         context_parts = [title]
-        thumbnail_url = ''  # initialize empty for per-article image
 
         parent = a.find_parent()
         if parent:
-            # Add surrounding <p> texts
             for p in parent.find_all("p", limit=3):
                 text = p.get_text(strip=True)
                 if text:
                     context_parts.append(text)
 
-            # Add image alt text + pick article image
             img = parent.find("img")
             if img:
                 if img.has_attr("alt") and img["alt"].strip():
                     context_parts.append(img["alt"].strip())
-                if img.has_attr("src") and img["src"].strip():
-                    thumbnail_url = urljoin(url, img["src"].strip())
 
-        # Combine context
         full_context = " ".join(context_parts).lower()
-
-        # --- Match keywords against title OR surrounding context ---
         if not any(word.lower() in full_context for word in keywords):
             continue
 
         pub_time = datetime.now().strftime("%a, %d %b %Y %H:%M:%S GMT")
 
-        articles.append(
-            {
-                "title": title,
-                "description": " ".join(context_parts)[:500],  # context used as description
-                "link": link,
-                "guid": {"isPermaLink": True, "value": link},
-                "dc:creator": parsed_domain,
-                "pubDate": pub_time,
-                "thumbnails": favicon_url, 
-                "thumbnail_url": thumbnail_url,
-            }
-        )
+        # Create article with empty thumbnail_url for now
+        article = {
+            "title": title,
+            "description": " ".join(context_parts)[:500],
+            "link": link,
+            "guid": {"isPermaLink": True, "value": link},
+            "dc:creator": parsed_domain,
+            "pubDate": pub_time,
+            "thumbnails": favicon_url,
+            "thumbnail_url": "",  # will fill with OG image
+        }
+
+        temp_articles.append(article)
+        tasks.append(get_og_image(link))
+
+    # 🔹 Fetch all OG images concurrently
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    # Attach results back to articles
+    for article, og_img in zip(temp_articles, results):
+        if isinstance(og_img, str) and og_img:
+            article["thumbnail_url"] = og_img
+        articles.append(article)
 
     return articles
-
 
 # ----------------------------
 # Scrape Single URL
@@ -317,7 +359,7 @@ async def scrape_country(db: Prisma, country, sources_by_country, keywords_by_co
 
             html, error_reason, _, _ = result
             if html:
-                articles = scrape_articles(url, html, keywords, country.name)
+                articles = await scrape_articles(url, html, keywords, country.name)
                 all_articles.extend(articles)
 
         # build one combined feed JSON

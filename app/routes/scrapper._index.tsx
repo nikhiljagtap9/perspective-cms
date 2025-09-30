@@ -116,12 +116,12 @@ export default function Scrapper() {
         <h1 className="text-2xl font-bold">
           Scrapper ({filteredFeeds.length})
         </h1>
-        <Button asChild>
+        {/* <Button asChild>
           <Link to="/scrapper/new">
             <PlusCircle className="mr-2 h-4 w-4" />
             Add New Scrapper
           </Link>
-        </Button>
+        </Button> */}
       </div>
 
       {/* Search + Status Filter */}
@@ -207,9 +207,9 @@ export default function Scrapper() {
                   <Button variant="secondary" size="sm" asChild>
                     <Link to={`/scrapper/feed?feed_id=${feed.id}`}>View</Link>
                   </Button>
-                  <Button variant="secondary" size="sm" asChild>
+                  {/* <Button variant="secondary" size="sm" asChild>
                     <Link to={`/scrapper/edit/${feed.id}`}>Edit</Link>
-                  </Button>
+                  </Button> */}
                   <Form
                     method="post"
                     action={`/scrapper/delete/${feed.id}`}

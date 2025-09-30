@@ -615,7 +615,16 @@ async def main():
     db = Prisma()
     await db.connect()
 
+    # 🔹 Fetch all countries but filter for Afghanistan
     countries = await db.country.find_many()
+    countries = [c for c in countries if c.name.lower() == "afghanistan"]
+
+    if not countries:
+        logging.warning("No country found with name Afghanistan")
+        await db.disconnect()
+        await client.aclose()
+        return
+
     sources = await db.newssource.find_many()
     keywords = await db.keyword.find_many()
 
@@ -623,20 +632,20 @@ async def main():
     for s in sources:
         sources_by_country.setdefault(s.countryId, []).append(s.url)
 
+
     keywords_by_country = {}
     for k in keywords:
         # Split if row contains commas, else keep as single
         parts = [kw.strip() for kw in k.keyword.split(",") if kw.strip()]
-        keywords_by_country.setdefault(k.countryId, []).extend(parts)
+        keywords_by_country.setdefault(k.countryId, []).extend(parts)    
 
-    total = 0
+    # 🔹 Run scraper only for Afghanistan
     tasks = [scrape_country(db, country, sources_by_country, keywords_by_country) for country in countries]
 
-    # 🔹 Show progress bar
-    results = await tqdm_asyncio.gather(*tasks, total=len(tasks), desc="Scraping countries")
+    results = await tqdm_asyncio.gather(*tasks, total=len(tasks), desc="Scraping Afghanistan")
 
     total = sum(r for r in results if isinstance(r, int))
-    logging.info(f"SUMMARY: Total {total} articles saved across {len(countries)} countries")
+    logging.info(f"SUMMARY: Total {total} articles saved for Afghanistan")
 
     await db.disconnect()
     await client.aclose()

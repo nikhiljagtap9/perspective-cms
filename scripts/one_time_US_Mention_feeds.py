@@ -1,4 +1,5 @@
 import sys
+import os
 import json
 import asyncio
 import logging
@@ -24,20 +25,31 @@ USER_AGENTS = [
 ]
 
 # ----------------------------
-# Logging
+# Logging (Safe for Local + Production)
 # ----------------------------
+handlers = [logging.StreamHandler(sys.stdout)]  # always log to console
+
+# Only add file logging if filesystem is writable (local dev)
+try:
+    if os.access(".", os.W_OK):
+        # "w" = overwrite log file each run
+        handlers.append(logging.FileHandler("us_mentions.log", mode="w", encoding="utf-8"))
+except Exception:
+    pass  # ignore file log errors so app won't crash
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[logging.FileHandler("us_mentions.log"), logging.StreamHandler(sys.stdout)],
+    handlers=handlers,
 )
 
 # ----------------------------
 # HTTP Client
 # ----------------------------
 client = httpx.AsyncClient(
-    timeout=8, follow_redirects=True,
-    headers={"User-Agent": random.choice(USER_AGENTS)}
+    timeout=8,
+    follow_redirects=True,
+    headers={"User-Agent": random.choice(USER_AGENTS)},
 )
 
 # ----------------------------
@@ -105,7 +117,7 @@ def scrape_articles(url: str, html: str, keywords: list[str], country_name: str)
         seen_links.add(link)
 
         context_parts = [title]
-        thumbnail_url = ''
+        thumbnail_url = ""
 
         parent = a.find_parent()
         if parent:
@@ -171,10 +183,7 @@ async def scrape_us_mentions_country(db: Prisma, country, sources, keywords: lis
             "description": f"Scraped US mentions for {country.name}",
             "link": None,
             "items": all_articles,
-            "meta": {
-                "status": status,
-                "article_count": len(all_articles),
-            },
+            "meta": {"status": status, "article_count": len(all_articles)},
         }
     }
 
@@ -198,7 +207,7 @@ async def scrape_us_mentions_country(db: Prisma, country, sources, keywords: lis
             data={
                 "content": json.dumps(rss_json, ensure_ascii=False),
                 "updated_at": datetime.now(),
-            }
+            },
         )
     else:
         await safe_db_call(
@@ -207,7 +216,7 @@ async def scrape_us_mentions_country(db: Prisma, country, sources, keywords: lis
                 "feed_type": "US_MENTIONS",
                 "country_id": country.id,
                 "content": json.dumps(rss_json, ensure_ascii=False),
-            }
+            },
         )
 
     logging.info(f"[US_MENTIONS][{country.name}] → {status} ({len(all_articles)} articles)")

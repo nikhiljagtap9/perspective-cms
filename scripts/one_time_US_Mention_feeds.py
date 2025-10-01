@@ -29,7 +29,11 @@ USER_AGENTS = [
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[logging.FileHandler("us_mentions.log"), logging.StreamHandler(sys.stdout)],
+    datefmt="%Y-%m-%d %H:%M:%S",
+    handlers=[
+        logging.FileHandler("us_mentions.log", mode="w", encoding="utf-8"),
+        logging.StreamHandler(sys.stdout),
+    ],
 )
 
 # ----------------------------

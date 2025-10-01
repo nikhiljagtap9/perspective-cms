@@ -106,9 +106,17 @@ def clean_image_url(img_url: str) -> str:
 # Keyword Matcher (FIXED)
 # ----------------------------
 def keyword_match(full_context: str, keywords: list[str]) -> bool:
+    """
+    Return True if a keyword is found in the context as a proper word,
+    but skip cases like US$ / US€ (currencies).
+    """
     for word in keywords:
         pattern = r"\b" + re.escape(word) + r"\b"
-        if re.search(pattern, full_context, flags=re.IGNORECASE):
+        for match in re.finditer(pattern, full_context, flags=re.IGNORECASE):
+            # skip if immediately followed by currency symbols
+            after = full_context[match.end():match.end()+1]
+            if after in ["$", "€"]:
+                continue
             return True
     return False
 

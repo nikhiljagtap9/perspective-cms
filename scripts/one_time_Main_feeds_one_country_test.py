@@ -10,6 +10,8 @@ from bs4 import BeautifulSoup
 from prisma import Prisma
 from tqdm.asyncio import tqdm_asyncio
 from urllib.parse import urljoin, urlparse
+import re
+
 
 # ----------------------------
 # User Agents
@@ -144,6 +146,23 @@ async def get_og_image(article_url: str) -> str:
     except Exception:
         return ""
     return ""
+# ----------------------------
+# Keyword Matcher (FIXED)
+# ----------------------------
+def keyword_match(full_context: str, keywords: list[str]) -> bool:
+    """
+    Return True if a keyword is found in the context as a proper word,
+    but skip cases like US$ / US€ (currencies).
+    """
+    for word in keywords:
+        pattern = r"\b" + re.escape(word) + r"\b"
+        for match in re.finditer(pattern, full_context, flags=re.IGNORECASE):
+            # skip if immediately followed by currency symbols
+            after = full_context[match.end():match.end()+1]
+            if after in ["$", "€"]:
+                continue
+            return True
+    return False
 
 # ----------------------------
 # Scrape Articles
@@ -189,8 +208,9 @@ async def scrape_articles(url: str, html: str, keywords: list[str], country_name
                 context_parts.append(img["alt"].strip())
 
         full_context = " ".join(context_parts).lower()
-        if not any(word.lower() in full_context for word in keywords):
+        if not keyword_match(full_context, keywords):
             continue
+
 
         pub_time = datetime.now().strftime("%a, %d %b %Y %H:%M:%S GMT")
 

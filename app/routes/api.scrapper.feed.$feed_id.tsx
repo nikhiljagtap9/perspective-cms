@@ -11,6 +11,7 @@ const execFileAsync = promisify(execFile);
  */
 function escapeXml(unsafe: string = ""): string {
   return unsafe
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")

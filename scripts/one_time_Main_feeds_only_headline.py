@@ -3,7 +3,6 @@ import json
 import asyncio
 import logging
 import random
-import re
 from datetime import datetime
 
 import httpx
@@ -75,7 +74,7 @@ async def with_retries(coro_func, *args, retries=3, **kwargs):
             if attempt == retries:
                 logging.error(f"Failed after {retries} retries: {e}")
                 return None
-            await asyncio.sleep(1 * attempt)
+            await asyncio.sleep(1 * attempt)  # exponential-ish backoff
 
 # ----------------------------
 # Image cleaner
@@ -86,31 +85,26 @@ def clean_image_url(img_url: str) -> str:
     try:
         parsed = urlparse(img_url)
         path_parts = parsed.path.split("/")
+
         if "upload" in path_parts:
             idx = path_parts.index("upload")
             after_upload = path_parts[idx + 1 :]
+
             if len(after_upload) >= 2:
                 transforms = ",".join(after_upload[:-1])
                 image_id = after_upload[-1]
+
                 width_transform = None
                 for part in transforms.split(","):
                     if part.strip().startswith("w_"):
                         width_transform = part.strip()
+
                 if width_transform:
                     return f"{parsed.scheme}://{parsed.netloc}/image/upload/{width_transform}/{image_id}"
+
         return img_url
     except Exception:
         return img_url
-
-# ----------------------------
-# Keyword Matcher (FIXED)
-# ----------------------------
-def keyword_match(full_context: str, keywords: list[str]) -> bool:
-    for word in keywords:
-        pattern = r"\b" + re.escape(word) + r"\b"
-        if re.search(pattern, full_context, flags=re.IGNORECASE):
-            return True
-    return False
 
 # ----------------------------
 # Fetch Page
@@ -195,9 +189,7 @@ async def scrape_articles(url: str, html: str, keywords: list[str], country_name
                 context_parts.append(img["alt"].strip())
 
         full_context = " ".join(context_parts).lower()
-
-        # 🔹 fixed keyword match
-        if not keyword_match(full_context, keywords):
+        if not any(word.lower() in full_context for word in keywords):
             continue
 
         pub_time = datetime.now().strftime("%a, %d %b %Y %H:%M:%S GMT")

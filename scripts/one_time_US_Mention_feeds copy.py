@@ -41,17 +41,6 @@ client = httpx.AsyncClient(
 )
 
 # ----------------------------
-# DB Concurrency limiter
-# ----------------------------
-MAX_DB_CONCURRENCY = 5
-db_semaphore = asyncio.Semaphore(MAX_DB_CONCURRENCY)
-
-async def safe_db_call(func, *args, **kwargs):
-    """Ensure we don’t open too many Prisma connections in parallel."""
-    async with db_semaphore:
-        return await func(*args, **kwargs)
-
-# ----------------------------
 # Fetch Page
 # ----------------------------
 async def fetch_page(url: str):
@@ -67,28 +56,36 @@ async def fetch_page(url: str):
 # ----------------------------
 def scrape_articles(url: str, html: str, keywords: list[str], country_name: str):
     articles = []
-    seen_links = set()
+    seen_links = set()   # Track duplicates by link
     soup = BeautifulSoup(html, "html.parser")
 
     # --- Find site logo ---
     site_logo = None
+
+    # Try favicon
     icon = soup.find("link", rel=lambda v: v and "icon" in v.lower())
     if icon and icon.get("href"):
         site_logo = icon["href"]
+
+    # Try og:image
     if not site_logo:
         og_img = soup.find("meta", property="og:image")
         if og_img and og_img.get("content"):
             site_logo = og_img["content"]
+
+    # Try <img> with logo in class/id
     if not site_logo:
         logo_img = soup.find("img", {"class": lambda v: v and "logo" in v.lower()})
         if not logo_img:
             logo_img = soup.find("img", {"id": lambda v: v and "logo" in v.lower()})
         if logo_img and logo_img.get("src"):
             site_logo = logo_img["src"]
+
+    # Fix relative URL
     if site_logo and not site_logo.startswith("http"):
         site_logo = url.rstrip("/") + "/" + site_logo.lstrip("/")
 
-    parsed_domain = urlparse(url).netloc
+    parsed_domain = urlparse(url).netloc  # extract domain (e.g., "www.thehindu.com")        
 
     # --- Collect articles ---
     for a in soup.find_all("a", href=True):
@@ -100,17 +97,23 @@ def scrape_articles(url: str, html: str, keywords: list[str], country_name: str)
         if not link.startswith("http"):
             link = url.rstrip("/") + "/" + link.lstrip("/")
 
+        # Skip duplicates
         if link in seen_links:
             continue
-        seen_links.add(link)
+        seen_links.add(link)    
 
+        # Collect context for keyword matching
         context_parts = [title]
-        thumbnail_url = ''
+        thumbnail_url = ''  # initialize empty for per-article image
 
         parent = a.find_parent()
         if parent:
-            for p in parent.find_all("p", limit=3):
+            # Nearby <p> tags
+            p_tags = parent.find_all("p", limit=3)
+            for p in p_tags:
                 context_parts.append(p.get_text(strip=True))
+
+            # Image alt text
             img = parent.find("img")
             if img:
                 if img.has_attr("alt") and img["alt"].strip():
@@ -119,12 +122,15 @@ def scrape_articles(url: str, html: str, keywords: list[str], country_name: str)
                     thumbnail_url = urljoin(url, img["src"].strip())
 
         full_context = " ".join(context_parts).lower()
+
+        # --- Keyword filter ---
         if not (
             any(word.lower() in full_context for word in keywords)
             or country_name.lower() in full_context
         ):
             continue
 
+        # Build article
         pub_time = datetime.now().strftime("%a, %d %b %Y %H:%M:%S GMT")
         article = {
             "title": title,
@@ -140,6 +146,9 @@ def scrape_articles(url: str, html: str, keywords: list[str], country_name: str)
 
     return articles, site_logo
 
+# ----------------------------
+# Scrape Single (Source + Country)
+# ----------------------------
 # ----------------------------
 # Scrape All Sources for One Country (US Mentions)
 # ----------------------------
@@ -157,13 +166,15 @@ async def scrape_us_mentions_country(db: Prisma, country, sources, keywords: lis
 
             articles, logo = scrape_articles(url, html, keywords, country.name)
             all_articles.extend(articles)
-            if logo and not site_logo:
+
+            if logo and not site_logo:  # take first found logo
                 site_logo = logo
 
         except Exception as e:
             logging.error(f"[US_MENTIONS][{country.name}] {url} exception: {e}")
             traceback.print_exc()
 
+    # Build combined feed JSON
     status = "success" if all_articles else "empty"
     rss_json = {
         "channel": {
@@ -178,6 +189,7 @@ async def scrape_us_mentions_country(db: Prisma, country, sources, keywords: lis
         }
     }
 
+    # Add site logo once
     if site_logo:
         rss_json["channel"]["image"] = {
             "url": site_logo,
@@ -185,15 +197,13 @@ async def scrape_us_mentions_country(db: Prisma, country, sources, keywords: lis
             "link": sources[0].url if sources else None,
         }
 
-    # 🔹 DB calls wrapped with safe_db_call
-    saved_row = await safe_db_call(
-        db.scrapperdata.find_first,
-        where={"country_id": country.id, "feed_type": "US_MENTIONS"},
+    # Save / update DB (one row per country + feed_type)
+    saved_row = await db.scrapperdata.find_first(
+        where={"country_id": country.id, "feed_type": "US_MENTIONS"}
     )
 
     if saved_row:
-        await safe_db_call(
-            db.scrapperdata.update,
+        await db.scrapperdata.update(
             where={"id": saved_row.id},
             data={
                 "content": json.dumps(rss_json, ensure_ascii=False),
@@ -201,8 +211,7 @@ async def scrape_us_mentions_country(db: Prisma, country, sources, keywords: lis
             }
         )
     else:
-        await safe_db_call(
-            db.scrapperdata.create,
+        await db.scrapperdata.create(
             data={
                 "feed_type": "US_MENTIONS",
                 "country_id": country.id,
@@ -218,32 +227,30 @@ async def scrape_us_mentions_country(db: Prisma, country, sources, keywords: lis
 # ----------------------------
 async def main():
     db = Prisma()
-    try:
-        await db.connect()
+    await db.connect()
 
-        countries = await safe_db_call(db.country.find_many)
-        us_sources = await safe_db_call(db.usmentionssource.find_many)
-        us_keywords = await safe_db_call(db.usmentionskeyword.find_many)
+    countries = await db.country.find_many()
+    us_sources = await db.usmentionssource.find_many()
+    us_keywords = await db.usmentionskeyword.find_many()
 
-        keywords_by_country = {}
-        for k in us_keywords:
-            keywords_by_country.setdefault(k.countryId, []).append(k.keyword)
+    keywords_by_country = {}
+    for k in us_keywords:
+        keywords_by_country.setdefault(k.countryId, []).append(k.keyword)
 
-        tasks = []
-        for country in countries:
-            keywords = keywords_by_country.get(country.id, [])
-            if not keywords:
-                continue
-            tasks.append(scrape_us_mentions_country(db, country, us_sources, keywords))
+    tasks = []
+    for country in countries:
+        keywords = keywords_by_country.get(country.id, [])
+        if not keywords:
+            continue
+        tasks.append(scrape_us_mentions_country(db, country, us_sources, keywords))
 
-        results = await tqdm_asyncio.gather(*tasks, total=len(tasks), desc="Scraping US Mentions")
+    results = await tqdm_asyncio.gather(*tasks, total=len(tasks), desc="Scraping US Mentions")
 
-        total = sum(r for r in results if isinstance(r, int))
-        logging.info(f"SUMMARY: US_MENTIONS={total}")
+    total = sum(r for r in results if isinstance(r, int))
+    logging.info(f"SUMMARY: US_MENTIONS={total}")
 
-    finally:
-        await db.disconnect()
-        await client.aclose()
+    await db.disconnect()
+    await client.aclose()
 
 
 if __name__ == "__main__":

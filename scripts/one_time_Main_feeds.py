@@ -53,9 +53,18 @@ logging.basicConfig(
 # ----------------------------
 MAX_COUNTRY_CONCURRENCY = 5
 MAX_URL_CONCURRENCY = 20
+MAX_DB_CONCURRENCY = 5  # 🔹 limit DB connections
 
 country_semaphore = asyncio.Semaphore(MAX_COUNTRY_CONCURRENCY)
 url_semaphore = asyncio.Semaphore(MAX_URL_CONCURRENCY)
+db_semaphore = asyncio.Semaphore(MAX_DB_CONCURRENCY)
+
+# ----------------------------
+# Safe DB wrapper
+# ----------------------------
+async def safe_db_call(func, *args, **kwargs):
+    async with db_semaphore:
+        return await func(*args, **kwargs)
 
 # ----------------------------
 # HTTP Client
@@ -103,7 +112,7 @@ def clean_image_url(img_url: str) -> str:
         return img_url
 
 # ----------------------------
-# Keyword Matcher (FIXED)
+# Keyword Matcher
 # ----------------------------
 def keyword_match(full_context: str, keywords: list[str]) -> bool:
     """
@@ -113,7 +122,6 @@ def keyword_match(full_context: str, keywords: list[str]) -> bool:
     for word in keywords:
         pattern = r"\b" + re.escape(word) + r"\b"
         for match in re.finditer(pattern, full_context, flags=re.IGNORECASE):
-            # skip if immediately followed by currency symbols
             after = full_context[match.end():match.end()+1]
             if after in ["$", "€"]:
                 continue
@@ -203,8 +211,6 @@ async def scrape_articles(url: str, html: str, keywords: list[str], country_name
                 context_parts.append(img["alt"].strip())
 
         full_context = " ".join(context_parts).lower()
-
-        # 🔹 fixed keyword match
         if not keyword_match(full_context, keywords):
             continue
 
@@ -278,17 +284,20 @@ async def scrape_country(db: Prisma, country, sources_by_country, keywords_by_co
             }
         }
 
-        saved_row = await db.scrapperdata.find_unique(
+        saved_row = await safe_db_call(
+            db.scrapperdata.find_unique,
             where={"country_id_feed_type": {"country_id": country.id, "feed_type": "MAIN_FEED"}}
         )
 
         if saved_row:
-            await db.scrapperdata.update(
+            await safe_db_call(
+                db.scrapperdata.update,
                 where={"id": saved_row.id},
                 data={"content": json.dumps(rss_json, ensure_ascii=False), "updated_at": datetime.now()},
             )
         else:
-            await db.scrapperdata.create(
+            await safe_db_call(
+                db.scrapperdata.create,
                 data={"country_id": country.id, "feed_type": "MAIN_FEED", "content": json.dumps(rss_json, ensure_ascii=False)}
             )
 
@@ -300,34 +309,35 @@ async def scrape_country(db: Prisma, country, sources_by_country, keywords_by_co
 # ----------------------------
 async def main():
     db = Prisma()
-    await db.connect()
+    try:
+        await db.connect()
 
-    countries = await db.country.find_many()
-    sources = await db.newssource.find_many()
-    keywords = await db.keyword.find_many()
+        countries = await safe_db_call(db.country.find_many)
+        sources = await safe_db_call(db.newssource.find_many)
+        keywords = await safe_db_call(db.keyword.find_many)
 
-    sources_by_country = {}
-    for s in sources:
-        sources_by_country.setdefault(s.countryId, []).append(s.url)
+        sources_by_country = {}
+        for s in sources:
+            sources_by_country.setdefault(s.countryId, []).append(s.url)
 
-    keywords_by_country = {}
-    for k in keywords:
-        parts = [kw.strip() for kw in k.keyword.split(",") if kw.strip()]
-        keywords_by_country.setdefault(k.countryId, []).extend(parts)
+        keywords_by_country = {}
+        for k in keywords:
+            parts = [kw.strip() for kw in k.keyword.split(",") if kw.strip()]
+            keywords_by_country.setdefault(k.countryId, []).extend(parts)
 
-    tasks = [scrape_country(db, country, sources_by_country, keywords_by_country) for country in countries]
+        tasks = [scrape_country(db, country, sources_by_country, keywords_by_country) for country in countries]
+        results = await tqdm_asyncio.gather(*tasks, total=len(tasks), desc="Scraping countries")
 
-    results = await tqdm_asyncio.gather(*tasks, total=len(tasks), desc="Scraping countries")
+        for country, result in zip(countries, results):
+            if isinstance(result, int):
+                logging.info(f"--> {country.name}: {result} articles")
 
-    for country, result in zip(countries, results):
-        if isinstance(result, int):
-            logging.info(f"--> {country.name}: {result} articles")
+        total = sum(r for r in results if isinstance(r, int))
+        logging.info(f"SUMMARY: Total {total} articles saved across {len(countries)} countries")
 
-    total = sum(r for r in results if isinstance(r, int))
-    logging.info(f"SUMMARY: Total {total} articles saved across {len(countries)} countries")
-
-    await db.disconnect()
-    await client.aclose()
+    finally:
+        await db.disconnect()
+        await client.aclose()
 
 if __name__ == "__main__":
     asyncio.run(main())

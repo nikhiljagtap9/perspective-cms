@@ -6,13 +6,14 @@ import logging
 import traceback
 import random
 from datetime import datetime
-
+from dotenv import load_dotenv
 import httpx
 from bs4 import BeautifulSoup
 from prisma import Prisma
 from tqdm.asyncio import tqdm_asyncio
 from urllib.parse import urljoin, urlparse
 
+load_dotenv()
 # ----------------------------
 # User Agents
 # ----------------------------
@@ -55,7 +56,7 @@ client = httpx.AsyncClient(
 # ----------------------------
 # DB Concurrency limiter
 # ----------------------------
-MAX_DB_CONCURRENCY = 5
+MAX_DB_CONCURRENCY = 2
 db_semaphore = asyncio.Semaphore(MAX_DB_CONCURRENCY)
 
 async def safe_db_call(func, *args, **kwargs):

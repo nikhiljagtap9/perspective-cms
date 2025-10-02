@@ -11,6 +11,7 @@ from prisma import Prisma
 from tqdm.asyncio import tqdm_asyncio
 from urllib.parse import urljoin, urlparse
 import re
+from dateutil import parser as dateparser, tz
 
 
 # ----------------------------
@@ -48,6 +49,17 @@ logging.basicConfig(
         logging.StreamHandler(sys.stdout),
     ],
 )
+
+MAX_AGE_HOURS = 48
+
+def is_recent(pub_time_str: str) -> bool:
+    """Check if parsed time is within last 48 hours."""
+    try:
+        pub_time = dateparser.parse(pub_time_str).astimezone(tz.UTC)
+        now = datetime.now(tz.UTC)
+        return (now - pub_time).total_seconds() <= MAX_AGE_HOURS * 3600
+    except Exception:
+        return False
 
 # ----------------------------
 # Concurrency
@@ -213,6 +225,7 @@ async def scrape_articles(url: str, html: str, keywords: list[str], country_name
 
 
         pub_time = datetime.now().strftime("%a, %d %b %Y %H:%M:%S GMT")
+        
 
         article = {
             "title": title,
@@ -309,7 +322,7 @@ async def main():
     # ----------------------------
     # Config for testing
     # ----------------------------
-    TEST_COUNTRY_NAME = "Afghanistan"   # <-- change this for name match
+    TEST_COUNTRY_NAME = "Albania"   # <-- change this for name match
     TEST_COUNTRY_ID = None                # <-- or set an ID (int/uuid) if you prefer
 
     # Fetch from DB

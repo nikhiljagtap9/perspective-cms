@@ -5,13 +5,14 @@ import logging
 import random
 import re
 from datetime import datetime
-
+from dotenv import load_dotenv
 import httpx
 from bs4 import BeautifulSoup
 from prisma import Prisma
 from tqdm.asyncio import tqdm_asyncio
 from urllib.parse import urljoin, urlparse
 
+load_dotenv()
 # ----------------------------
 # User Agents
 # ----------------------------
@@ -53,7 +54,7 @@ logging.basicConfig(
 # ----------------------------
 MAX_COUNTRY_CONCURRENCY = 5
 MAX_URL_CONCURRENCY = 20
-MAX_DB_CONCURRENCY = 5  # 🔹 limit DB connections
+MAX_DB_CONCURRENCY = 2  # 🔹 limit DB connections
 
 country_semaphore = asyncio.Semaphore(MAX_COUNTRY_CONCURRENCY)
 url_semaphore = asyncio.Semaphore(MAX_URL_CONCURRENCY)

@@ -224,23 +224,54 @@ async def scrape_country_breaking(db: Prisma, country, handle: str, keyword: str
 # ----------------------------
 # Main runner
 # ----------------------------
+# async def main():
+#     db = Prisma()
+#     await db.connect()
+
+#     total = 0
+#     for country_name, info in SOURCES.items():
+#         country = await db.country.find_first(where={"name": country_name})
+#         if not country:
+#             logging.warning(f"⚠️ Country '{country_name}' not found in DB")
+#             continue
+
+#         count = await scrape_country_breaking(db, country, info["handle"], info["keyword"])
+#         total += count
+
+#     logging.info(f"SUMMARY: BREAKING_NEWS={total} tweets, API_HITS={API_HITS}")
+
+#     await db.disconnect()
+
 async def main():
     db = Prisma()
-    await db.connect()
+    try:
+        await db.connect()
+        total = 0
 
-    total = 0
-    for country_name, info in SOURCES.items():
-        country = await db.country.find_first(where={"name": country_name})
-        if not country:
-            logging.warning(f"⚠️ Country '{country_name}' not found in DB")
-            continue
+        for country_name, info in SOURCES.items():
+            try:
+                country = await db.country.find_first(where={"name": country_name})
+                if not country:
+                    logging.warning(f"⚠️ Country '{country_name}' not found in DB")
+                    continue
 
-        count = await scrape_country_breaking(db, country, info["handle"], info["keyword"])
-        total += count
+                count = await scrape_country_breaking(
+                    db, country, info["handle"], info["keyword"]
+                )
+                total += count
+            except Exception as inner_e:
+                logging.error(f"❌ Error scraping {country_name}: {inner_e}", exc_info=True)
 
-    logging.info(f"SUMMARY: BREAKING_NEWS={total} tweets, API_HITS={API_HITS}")
+        logging.info(f"SUMMARY: BREAKING_NEWS={total} tweets, API_HITS={API_HITS}")
 
-    await db.disconnect()
+    except Exception as e:
+        logging.critical(f"🚨 Fatal error in main(): {e}", exc_info=True)
+
+    finally:
+        # 🔹 Always cleanup
+        await db.disconnect()
+        await client.aclose()
+
 
 if __name__ == "__main__":
     asyncio.run(main())

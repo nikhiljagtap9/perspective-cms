@@ -50,22 +50,50 @@ async def scrape_country_handles(db, country, handles):
     # )
     return len(all_tweets)
 
+# async def main():
+#     db = Prisma(); await db.connect()
+#     total = 0
+#     for cname in TARGET_COUNTRIES:
+#         country = await db.country.find_first(where={"name": cname})
+#         if not country: continue
+#         handles = [g.handle for g in await db.embassypresence.find_many(where={"countryId": country.id}) if g.handle]
+#         if handles: total += await scrape_country_handles(db, country, handles)
+#     await db.disconnect()
+
 async def main():
-    db = Prisma(); await db.connect()
-    total = 0
-    for cname in TARGET_COUNTRIES:
-        country = await db.country.find_first(where={"name": cname})
-        if not country: continue
-        handles = [g.handle for g in await db.embassypresence.find_many(where={"countryId": country.id}) if g.handle]
-        if handles: total += await scrape_country_handles(db, country, handles)
-    # await save_feed_log(
-    #     db,
-    #     FEED_TYPE,
-    #     "system",
-    #     {"message": f"{FEED_TYPE} TOTAL={total}, API_HITS={API_HITS}"},
-    #     "success"
-    # )
-    await db.disconnect()
+    db = Prisma()
+    try:
+        await db.connect()
+        total = 0
+
+        for cname in TARGET_COUNTRIES:
+            country = await db.country.find_first(where={"name": cname})
+            if not country:
+                continue
+
+            handles = [
+                g.handle
+                for g in await db.embassypresence.find_many(where={"countryId": country.id})
+                if g.handle
+            ]
+            if handles:
+                total += await scrape_country_handles(db, country, handles)
+
+        # Optional: feed log
+        # await save_feed_log(
+        #     db,
+        #     FEED_TYPE,
+        #     "system",
+        #     {"message": f"{FEED_TYPE} TOTAL={total}, API_HITS={API_HITS}"},
+        #     "success"
+        # )
+
+    finally:
+        # Always cleanup even if an error happens
+        await db.disconnect()
+        await client.aclose()
+
+
 
 if __name__ == "__main__":
     asyncio.run(main())

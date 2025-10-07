@@ -3,17 +3,16 @@ import json
 import asyncio
 import logging
 import random
+import re
 from datetime import datetime
-
+from dotenv import load_dotenv
 import httpx
 from bs4 import BeautifulSoup
 from prisma import Prisma
 from tqdm.asyncio import tqdm_asyncio
 from urllib.parse import urljoin, urlparse
-import re
-from dateutil import parser as dateparser, tz
 
-
+load_dotenv()
 # ----------------------------
 # User Agents
 # ----------------------------
@@ -50,25 +49,23 @@ logging.basicConfig(
     ],
 )
 
-MAX_AGE_HOURS = 48
-
-def is_recent(pub_time_str: str) -> bool:
-    """Check if parsed time is within last 48 hours."""
-    try:
-        pub_time = dateparser.parse(pub_time_str).astimezone(tz.UTC)
-        now = datetime.now(tz.UTC)
-        return (now - pub_time).total_seconds() <= MAX_AGE_HOURS * 3600
-    except Exception:
-        return False
-
 # ----------------------------
 # Concurrency
 # ----------------------------
 MAX_COUNTRY_CONCURRENCY = 5
 MAX_URL_CONCURRENCY = 20
+MAX_DB_CONCURRENCY = 2  # 🔹 limit DB connections
 
 country_semaphore = asyncio.Semaphore(MAX_COUNTRY_CONCURRENCY)
 url_semaphore = asyncio.Semaphore(MAX_URL_CONCURRENCY)
+db_semaphore = asyncio.Semaphore(MAX_DB_CONCURRENCY)
+
+# ----------------------------
+# Safe DB wrapper
+# ----------------------------
+async def safe_db_call(func, *args, **kwargs):
+    async with db_semaphore:
+        return await func(*args, **kwargs)
 
 # ----------------------------
 # HTTP Client
@@ -88,7 +85,7 @@ async def with_retries(coro_func, *args, retries=3, **kwargs):
             if attempt == retries:
                 logging.error(f"Failed after {retries} retries: {e}")
                 return None
-            await asyncio.sleep(1 * attempt)  # exponential-ish backoff
+            await asyncio.sleep(1 * attempt)
 
 # ----------------------------
 # Image cleaner
@@ -99,26 +96,38 @@ def clean_image_url(img_url: str) -> str:
     try:
         parsed = urlparse(img_url)
         path_parts = parsed.path.split("/")
-
         if "upload" in path_parts:
             idx = path_parts.index("upload")
             after_upload = path_parts[idx + 1 :]
-
             if len(after_upload) >= 2:
                 transforms = ",".join(after_upload[:-1])
                 image_id = after_upload[-1]
-
                 width_transform = None
                 for part in transforms.split(","):
                     if part.strip().startswith("w_"):
                         width_transform = part.strip()
-
                 if width_transform:
                     return f"{parsed.scheme}://{parsed.netloc}/image/upload/{width_transform}/{image_id}"
-
         return img_url
     except Exception:
         return img_url
+
+# ----------------------------
+# Keyword Matcher
+# ----------------------------
+def keyword_match(full_context: str, keywords: list[str]) -> bool:
+    """
+    Return True if a keyword is found in the context as a proper word,
+    but skip cases like US$ / US€ (currencies).
+    """
+    for word in keywords:
+        pattern = r"\b" + re.escape(word) + r"\b"
+        for match in re.finditer(pattern, full_context, flags=re.IGNORECASE):
+            after = full_context[match.end():match.end()+1]
+            if after in ["$", "€"]:
+                continue
+            return True
+    return False
 
 # ----------------------------
 # Fetch Page
@@ -158,23 +167,6 @@ async def get_og_image(article_url: str) -> str:
     except Exception:
         return ""
     return ""
-# ----------------------------
-# Keyword Matcher (FIXED)
-# ----------------------------
-def keyword_match(full_context: str, keywords: list[str]) -> bool:
-    """
-    Return True if a keyword is found in the context as a proper word,
-    but skip cases like US$ / US€ (currencies).
-    """
-    for word in keywords:
-        pattern = r"\b" + re.escape(word) + r"\b"
-        for match in re.finditer(pattern, full_context, flags=re.IGNORECASE):
-            # skip if immediately followed by currency symbols
-            after = full_context[match.end():match.end()+1]
-            if after in ["$", "€"]:
-                continue
-            return True
-    return False
 
 # ----------------------------
 # Scrape Articles
@@ -223,9 +215,7 @@ async def scrape_articles(url: str, html: str, keywords: list[str], country_name
         if not keyword_match(full_context, keywords):
             continue
 
-
         pub_time = datetime.now().strftime("%a, %d %b %Y %H:%M:%S GMT")
-        
 
         article = {
             "title": title,
@@ -295,17 +285,20 @@ async def scrape_country(db: Prisma, country, sources_by_country, keywords_by_co
             }
         }
 
-        saved_row = await db.scrapperdata.find_unique(
+        saved_row = await safe_db_call(
+            db.scrapperdata.find_unique,
             where={"country_id_feed_type": {"country_id": country.id, "feed_type": "MAIN_FEED"}}
         )
 
         if saved_row:
-            await db.scrapperdata.update(
+            await safe_db_call(
+                db.scrapperdata.update,
                 where={"id": saved_row.id},
                 data={"content": json.dumps(rss_json, ensure_ascii=False), "updated_at": datetime.now()},
             )
         else:
-            await db.scrapperdata.create(
+            await safe_db_call(
+                db.scrapperdata.create,
                 data={"country_id": country.id, "feed_type": "MAIN_FEED", "content": json.dumps(rss_json, ensure_ascii=False)}
             )
 
@@ -317,57 +310,31 @@ async def scrape_country(db: Prisma, country, sources_by_country, keywords_by_co
 # ----------------------------
 async def main():
     db = Prisma()
-    await db.connect()
+    try:
+        await db.connect()
 
-    # ----------------------------
-    # Config for testing
-    # ----------------------------
-    TEST_COUNTRY_NAME = "Albania"   # <-- change this for name match
-    TEST_COUNTRY_ID = None                # <-- or set an ID (int/uuid) if you prefer
+        # pick one country by name
+        country = await safe_db_call(
+            db.country.find_first,
+            where={"name": "Armenia"}  # 🔹 change to your test country
+        )
+        if not country:
+            print("❌ Country not found")
+            return
 
-    # Fetch from DB
-    countries = await db.country.find_many()
-    sources = await db.newssource.find_many()
-    keywords = await db.keyword.find_many()
+        sources = await safe_db_call(db.newssource.find_many, where={"countryId": country.id})
+        keywords = await safe_db_call(db.keyword.find_many, where={"countryId": country.id})
 
-    # 🔹 Pick only one country by name or ID
-    test_country = None
-    if TEST_COUNTRY_ID:
-        test_country = next((c for c in countries if c.id == TEST_COUNTRY_ID), None)
-    elif TEST_COUNTRY_NAME:
-        test_country = next((c for c in countries if c.name.lower() == TEST_COUNTRY_NAME.lower()), None)
+        sources_by_country = {country.id: [s.url for s in sources]}
+        keywords_by_country = {country.id: [k.keyword for k in keywords]}
 
-    if not test_country:
-        logging.error("❌ Test country not found in DB")
+        count = await scrape_country(db, country, sources_by_country, keywords_by_country)
+        print(f"✅ {country.name}: {count} articles")
+
+    finally:
         await db.disconnect()
-        return
+        await client.aclose()
 
-    countries = [test_country]  # restrict to one
-    logging.info(f"✅ Running scraper for test country: {test_country.name}")
-
-    # Build lookup maps
-    sources_by_country = {}
-    for s in sources:
-        sources_by_country.setdefault(s.countryId, []).append(s.url)
-
-    keywords_by_country = {}
-    for k in keywords:
-        parts = [kw.strip() for kw in k.keyword.split(",") if kw.strip()]
-        keywords_by_country.setdefault(k.countryId, []).extend(parts)
-
-    # Run only for test country
-    tasks = [scrape_country(db, country, sources_by_country, keywords_by_country) for country in countries]
-    results = await tqdm_asyncio.gather(*tasks, total=len(tasks), desc="Scraping test country")
-
-    for country, result in zip(countries, results):
-        if isinstance(result, int):
-            logging.info(f"--> {country.name}: {result} articles")
-
-    total = sum(r for r in results if isinstance(r, int))
-    logging.info(f"SUMMARY: Total {total} articles saved for test country")
-
-    await db.disconnect()
-    await client.aclose()
 
 if __name__ == "__main__":
     asyncio.run(main())

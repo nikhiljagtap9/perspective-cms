@@ -67,13 +67,13 @@ async def generate_summary(country_name: str):
     timestamp_gmt = datetime.datetime.now(datetime.UTC).strftime("%H:%M GMT")
 
     prompt = f"""
-You are a research assistant tasked with generating a SAME-DAY daily media summary 
-for {country_name}, dated {today_ist} (IST).
+Generate a daily media summary for {country_name} using the most up-to-date and reliable 
+{country_name}-origin media sources only. The summary must focus exclusively on same-day 
+news (i.e., published or updated on the current calendar date in IST).
 
 Sources Allowed:
 Only {country_name}-origin media outlets when available.
-⚠️ If {country_name} has no major outlets in the approved list, default to these for India:
-- The Hindu, Hindustan Times, Indian Express, Times of India, Deccan Herald, Mint, Business Standard, ANI, PTI
+Do not include reports from foreign or international media.
 
 Topics to Include:
 - Politics
@@ -88,27 +88,49 @@ Topics to Exclude:
 - Minor local stories
 
 📰 Output Format
-Headline: {country_name}: Daily Media Summary [{today_ist}]
 
-Timestamp: Generated at {timestamp_ist} / {timestamp_gmt}
+Headline:
+{country_name}: Daily Media Summary [{today_ist}] → Use three-letter month abbreviation (e.g., 19 Sep 25)
 
-Validation Line: Timestamp validated against system clock: YES
+Timestamp (required):
+Generated at {timestamp_ist} / {timestamp_gmt}
+→ Use 24-hour format with leading zeros
+→ IST must be Asia/Kolkata (UTC+05:30), GMT must be UTC+00:00
+→ Compute exact current time using system clock
+→ If system time is unavailable, return:
+ERROR: Current time unavailable — cannot produce accurate timestamp.
+
+Validation Line:
+Timestamp validated against system clock: YES
 
 📌 Content Sections
+
 Highlights:
-- Provide 3-6 short one-line bullet points (no trailing full stops)
+- 3–6 short bullet points (no trailing full stops)
+- Capture the day's key themes
 
 Detailed Summary:
-- Provide 3-5 concise sections
-- Each section must:
-  • Begin with the topic or headline
-  • Summarize the issue factually in ~2 sentences
-  • End with explicit source attribution in this format: (Source: [Name](URL))
+3-5 concise paragraphs. Each paragraph must:
+- Begin with the topic or headline
+- Provide a neutral, factual summary of the issue
+- End with full source attribution that includes both the source name and its exact URL on a new line
+
+✅ Mandatory Attribution Format:
+(Source: The Hindu)
+URL: https://example.com
+
+If hyperlinking is used, the visible link must still be followed by the explicit URL on a new line, e.g.:
+(Source: Hindustan Times)
+URL: https://example.com
+
+✅ Mandatory Rule:
+Every individual source reference must include the exact URL of the corresponding item, displayed on a new line after the attribution.
+No unattributed or unverifiable information should appear.
 
 Style:
-- Neutral, factual tone
-- Use US spelling where relevant
-- Keep focus only on same-day developments
+- Use US spelling
+- Neutral and factual tone
+- Focus strictly on same-day developments
 """
 
     API_HITS += 1

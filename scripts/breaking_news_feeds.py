@@ -270,7 +270,6 @@ async def main():
     finally:
         # 🔹 Always cleanup
         await db.disconnect()
-        await client.aclose()
 
 
 if __name__ == "__main__":
